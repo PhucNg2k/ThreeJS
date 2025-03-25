@@ -9,7 +9,6 @@ import Stats from 'three/addons/libs/stats.module.js'
 import { GUI } from 'dat.gui';
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 
 
@@ -119,11 +118,21 @@ async function init() {
     });
 
 
+
+
+
     let bbox = new THREE.Box3().setFromObject(womanObject)
+    bbox.applyMatrix4(womanObject.matrixWorld)
+    
     let bbox_size = new THREE.Vector3();
     bbox.getSize(bbox_size);
+
+    let geometry = new THREE.BoxGeometry(bbox_size.x, bbox_size.y, bbox_size.z)
+    const bboxMesh = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( {color: 0x00ff00} ));
+    scene.add(bboxMesh)
+
     const helper = new THREE.Box3Helper(bbox, 0xffff00);
-    scene.add(helper);
+    //scene.add(helper);
 
     let centerpoint = new THREE.Vector3()
     bbox.getCenter(centerpoint);
