@@ -1,16 +1,19 @@
-
 import * as THREE from 'three';
 
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import Stats from 'three/addons/libs/stats.module.js'
 import { GUI } from 'dat.gui';
-import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader'
+import { LoopSubdivision } from 'three-subdivide';
+import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
 
+const allObjects = []
 
+const modelCache = new Map(); 
 
+const clock = new THREE.Clock();
 
 async function init() {
 
@@ -18,230 +21,199 @@ async function init() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-
+   
     const stats = new Stats()
 
     document.getElementById("webgl").appendChild(stats.dom);
     document.getElementById("webgl").appendChild(renderer.domElement);
 
-    const scene = new THREE.Scene();
-
-    //scene.background = new THREE.Color(0x4287f5);
-    //scene.background = new THREE.Color("black");
-
-    scene.add(new THREE.AxesHelper(1000))
-
-
-    const plane = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide }));
-    plane.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2)
-    scene.add(plane)
-
-
-    scene.background = new THREE.CubeTextureLoader().setPath('https://sbcode.net/img/').load(['px.png', 'nx.png', 'py.png', 'ny.png', 'pz.png', 'nz.png'])
-    scene.backgroundBlurriness = 0.5;
-
     const camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
-        0.1,
-        1500
+        1.0,
+        10000
     );
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(window.devicePixelRatio);
 
+    const scene = new THREE.Scene();
 
-    const controls = new OrbitControls(camera, renderer.domElement)
-    controls.minDistance = 20;
-    controls.maxDistance = 1000;
-    controls.enableDamping = true
+    scene.background = new THREE.CubeTextureLoader().setPath('https://sbcode.net/img/').load(['px.png', 'nx.png', 'py.png', 'ny.png', 'pz.png', 'nz.png'])
+    scene.backgroundBlurriness = 0.5;
+    //scene.background = new THREE.Color(0x4287f5);
 
+    scene.add(new THREE.AxesHelper(1000))
+
+    // LIGHT
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 3);
+    hemiLight.position.set(0, 20, 0);
+    
+    const dirLight = new THREE.DirectionalLight(0xffffff, 3);
+    dirLight.position.set(- 3, 5, - 10);
+    dirLight.castShadow = true;
+    dirLight.shadow.camera.top = 2;
+    dirLight.shadow.camera.bottom = - 2;
+    dirLight.shadow.camera.left = - 2;
+    dirLight.shadow.camera.right = 2;
+    dirLight.shadow.camera.near = 0.1;
+    dirLight.shadow.camera.far = 40;
+    
+    
     const ambientLight = new THREE.AmbientLight(0xeb75d9);
 
     const pointLight = new THREE.PointLight(0x769e73, 15);
-    pointLight.position.set(-200, 300, 0);
-    const pointLightHelper = new THREE.PointLightHelper(pointLight, 2);
-
-    const spotLight = new THREE.SpotLight( 0xffffff, 10, pointLight.position.y);
+    pointLight.position.set(-200, 1000, 0);
+    
+    const spotLight = new THREE.SpotLight(0xffffff, 10, pointLight.position.y);
     spotLight.position.copy(pointLight.position);
     spotLight.angle = Math.PI / 6; // Controls the cone spread
     spotLight.penumbra = 0.2; // Soft edges
-    
-    const spotLightHelper = new THREE.SpotLightHelper(spotLight);
-    spotLightHelper.update();
-    
-    console.log("Spotlight Position:", spotLight.position);
-    console.log("Spotlight Target:", spotLight.target.position);
 
+    scene.add(hemiLight);
+    scene.add(dirLight);
     scene.add(ambientLight);
     scene.add(pointLight);
-    scene.add(pointLightHelper);
-    scene.add(spotLightHelper);
 
-    {
-        const skyColor = 0xB1E1EFF;
-        const groundColor = 0xB97A20;
-        const light = new THREE.HemisphereLight(skyColor, groundColor, 3);
-        scene.add(light)
-    }
+
+    // PLANE
+    let groundTexture = new THREE.TextureLoader().load("planeTexture.jpeg");
+    groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+    groundTexture.repeat.set( 10000, 10000 );
+    groundTexture.anisotropy = 16;
+    groundTexture.encoding = THREE.sRGBEncoding;
+  
+    const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(5000, 5000), 
+        new THREE.MeshStandardMaterial( { map: groundTexture } ));
+    plane.position.y = 0.0;
+    plane.rotation.x = - Math.PI / 2;
+    plane.receiveShadow = true;
+    scene.add(plane);
+
+    const FPScontrols = new OrbitControls(camera, renderer.domElement)
+    FPScontrols.movementSpeed = 500;
+	FPScontrols.lookSpeed = 0.1;
+    
+    //scene.add(pointLightHelper);
+    //scene.add(spotLightHelper);
 
     renderer.toneMapping = THREE.ReinhardToneMapping;
     renderer.toneMappingExposure = 2.0;
 
-    scene.add(camera)
-
-
-
     const textureloader = new THREE.TextureLoader()
-
-    const textureBase = "Textures"
-    const womanObject = await loadOBJModel("Woman/TrialFreya_OBJ.obj", "Woman/TrialFreya_OBJ_modified.mtl", "");
-
-    womanObject.traverse(function (child) {
-        if (child.isMesh) {
-            let textureName = child.name;
-            let texturePath = `${textureBase}/${textureName}.png`;
-
-            // Check if texture exists before applying
-            checkTextureExists(texturePath).then(textureExists => {
-                if (textureExists) {
-                    //console.log(texturePath)
-                    let tmp_texture = textureloader.load(texturePath)
-
-                    child.material.map = tmp_texture;
-                    //console.log("Applied texture ", tmp_texture);
-
-                } else {
-                    console.warn(`Texture not found: ${texturePath}`);
-                }
-            });
-
-            //console.log(child)
-        }
-    });
-
-
-
-
-
-    let bbox = new THREE.Box3().setFromObject(womanObject)
-    bbox.applyMatrix4(womanObject.matrixWorld)
+    const carObj1 = await loadFBXModel('Car/Car.fbx');
+    const carObj2 = await loadFBXModel('Car/Car.fbx');
+    const carObj3 = await loadFBXModel('Car/Car.fbx');
+    const carObj4 = await loadFBXModel('Car/Car.fbx');
+    const carObj5 = await loadFBXModel('Car/Car.fbx');
+    const garage = await loadFBXModel('Garage/Garage.fbx')
     
-    let bbox_size = new THREE.Vector3();
-    bbox.getSize(bbox_size);
 
-    let geometry = new THREE.BoxGeometry(bbox_size.x, bbox_size.y, bbox_size.z)
-    const bboxMesh = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( {color: 0x00ff00} ));
-    scene.add(bboxMesh)
+    let carSize = new THREE.Box3().setFromObject(carObj1);
+    console.log(carSize);
+    let carWidth = carSize.max.x - carSize.min.x;
+    let carHeight = carSize.max.y - carSize.min.y;
+    let carDepth = carSize.max.z - carSize.min.z;
 
-    const helper = new THREE.Box3Helper(bbox, 0xffff00);
-    //scene.add(helper);
+    carObj1.position.set(0,0,0);
+    carObj2.position.set(carWidth + 500,0,0);
+    carObj3.position.set( carWidth + 1000,0,0);
+    carObj4.position.set(-carWidth - 500,0,0);
+    carObj5.position.set(-carWidth - 1000,0,0);
 
-    let centerpoint = new THREE.Vector3()
-    bbox.getCenter(centerpoint);
+    scene.add(carObj1)
+    scene.add(carObj2)
+    scene.add(carObj3)
+    scene.add(carObj4)
+    scene.add(carObj5)
 
-    // Recenter each mesh inside the group
-    womanObject.children.forEach((child) => {
-        if (child.isMesh) {
-            //child.geometry.translate(-centerpoint.x, -centerpoint.y, -centerpoint.z);
-            child.geometry.computeVertexNormals(); // Can improve rendering quality
-            child.material.needsUpdate = true;
+    garage.position.y = -1;
+    garage.scale.set(0.5, 0.5, 0.5);
+    scene.add(garage)
 
-        }
-    });
-
-
-
-
-    let midbox = new THREE.Box3();
-    let midboxHelper = new THREE.Box3Helper(midbox, 0xff0000); // Red wireframe box
-    scene.add(midboxHelper);
-
-    window.woman = womanObject;
-    womanObject.position.set(0, 0, 0)
-    womanObject.scale.setScalar(1);
-
-    scene.add(womanObject)
-
-
-    const ObjectFolder = gui.addFolder("Woman")
-    const rotateFolder = ObjectFolder.addFolder("Rotate")
-    rotateFolder.add(womanObject.rotation, "x", 0, Math.PI * 2).step(0.01).listen();
-    rotateFolder.add(womanObject.rotation, "y", 0, Math.PI * 2).step(0.01).listen();
-    rotateFolder.add(womanObject.rotation, "z", 0, Math.PI * 2).step(0.01).listen();
-    rotateFolder.open()
-
-    const translateFolder = ObjectFolder.addFolder("Translate")
-    translateFolder.add(womanObject.position, "x", -100, 100).step(0.01).listen();
-    translateFolder.add(womanObject.position, "y", -100, 100).step(0.01).listen();
-    translateFolder.add(womanObject.position, "z", -100, 100).step(0.01).listen();
-    translateFolder.open()
-
-    {
-        const color = 0xFFFFFF;
-        const light = new THREE.DirectionalLight(color, 3);
-        light.position.set(5, 10, 2);
-        scene.add(light);
-        console.log(light.target)
-        //light.target = womanObject
-        scene.add(light.target)
-    }
-
+    
     camera.position.x = 10;
     camera.position.y = 200;
-    camera.position.z = 500;
+    camera.position.z = 1000;
     camera.lookAt(scene.position)
-    controls.update()
+    //controls.update()
+
+    scene.add(camera)
 
     window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight)
-    })
-
-    controls.addEventListener('change', () => {
-        //updateFrame(); // render whenever the OrbitControls changes
+        FPScontrols.handleResize();
     })
 
 
-    console.log("Spotlight Position:", spotLight.position);
-console.log("Spotlight Target:", spotLight.target.position);
+    scene.traverse((child) => {
+        if (child.isGroup)
+            allObjects.push(child);
+    })
+
+    console.log(allObjects);
 
     updateFrame();
 
     function updateFrame() {
         renderer.render(scene, camera);
         stats.update()
-        controls.update()
+        FPScontrols.update( clock.getDelta())
 
-        bbox.setFromObject(womanObject)
-        helper.updateMatrixWorld(true)
-
-        bbox.getCenter(centerpoint);
-        bbox.getSize(bbox_size);
-
-        bbox_size = bbox_size.divideScalar(8)
-
-        midbox.set(
-            new THREE.Vector3(centerpoint.x - bbox_size.x, centerpoint.y - bbox_size.y, centerpoint.z - bbox_size.z),
-            new THREE.Vector3(centerpoint.x + bbox_size.x, centerpoint.y + bbox_size.y, centerpoint.z + bbox_size.z),
-        )
-
-        midboxHelper.box.copy(midbox);
-        midboxHelper.updateMatrixWorld(true);
-
-
+        //updateBoundingBox()
 
         requestAnimationFrame(function () {
             updateFrame();
         })
     }
 
+    function updateBoundingBox() {
+        bboxHelper.update();
+    }
+
     return scene;
 }
 
-/*
-min: c
-*/
 
-function loadOBJModel(objPath, mtlPath, base_path) {
+function loadOBJModel(objPath, base_path){
+    const onProgress = function (xhr) {
+        if (xhr.lengthComputable) {
+            const percentComplete = xhr.loaded / xhr.total * 100;
+            //console.log( percentComplete.toFixed( 2 ) + '% downloaded' );
+        }
+    }
+
+    return new Promise((resolve, reject) => {
+    
+        new OBJLoader()
+            .setPath(base_path)
+            .load(objPath, (obj) => {
+                resolve(obj)
+            }, onProgress, reject)
+            }
+    )
+}
+
+function loadFBXModel(fbxPath) {
+    const onProgress = function (xhr) {
+        if (xhr.lengthComputable) {
+            const percentComplete = xhr.loaded / xhr.total * 100;
+            //console.log(percentComplete.toFixed(2) + '% downloaded');
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        new FBXLoader()
+            .load(fbxPath, (obj) => {
+                resolve(obj);
+            }, onProgress, reject);
+    });
+}
+
+
+function loadOBJ_MTLModel(objPath, mtlPath, base_path) {
 
     const onProgress = function (xhr) {
         if (xhr.lengthComputable) {
@@ -269,6 +241,31 @@ function loadOBJModel(objPath, mtlPath, base_path) {
 
 
 }
+
+function checkCollisionWorld() {
+    for (let i = 0; i < allObjects.length; i++) {
+        let obj = allObjects[i];
+        let bboxA = new THREE.Box3().setFromObject(allObjects[i]);
+
+        for (let j = i + 1; j < allObjects.length; j++) {
+            let bboxB = new THREE.Box3().setFromObject(allMeshes[j]);
+            if (bboxA.intersectsBox(bboxB)) {
+                console.log(`Collision detected between ${allMeshes[i].name} and ${allMeshes[j].name}`);
+            }
+        }
+
+    }
+}
+
+
+function checkCollision(groupA, groupB) {
+    let bboxA = new THREE.Box3.setFromObject(groupA);
+    let bboxB = new THREE.Box3.setFromObject(groupB);
+
+    return bboxA.intersectBox(bboxB);
+}
+
+
 
 function checkTextureExists(url) {
     return fetch(url, { method: "HEAD" })

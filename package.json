@@ -4,6 +4,7 @@
   },
   "devDependencies": {
     "dat.gui": "^0.7.9",
+    "three-subdivide": "^1.1.5",
     "vite": "^6.2.2"
   },
   "scripts": {
