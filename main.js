@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
@@ -17,8 +16,8 @@ const allObjects = []
 
 const clock = new THREE.Clock();
 
-
-
+const pointer = new THREE.Vector2();
+let INTERSECTED;
 
 async function init() {
 
@@ -51,7 +50,8 @@ async function init() {
         console.error("Error Loading Cube Map!", error);
     });
 
-    scene.background = cubeTexture;scene.backgroundBlurriness = 0.5;
+    scene.background = cubeTexture;
+    scene.backgroundBlurriness = 0.1;
     scene.background.needsUpdate = true;
     console.log(scene.background.source)
 
@@ -92,31 +92,31 @@ async function init() {
     }
     uvAttribute.needsUpdate = true;
 
-    scene.add(plane);
+    //scene.add(plane);
 
     let planeBox = new THREE.BoxHelper(plane, 0x000000)
-    scene.add(planeBox)
+    //scene.add(planeBox)
 
 
     const controls = new PointerLockControls(camera, renderer.domElement)
 
-    const onKeyDown = function (event) {
-        switch (event.code) {
-          case 'KeyW':
-            controls.moveForward(50)
-            break
-          case 'KeyA':
-            controls.moveRight(-50)
-            break
-          case 'KeyS':
-            controls.moveForward(-50)
-            break
-          case 'KeyD':
-            controls.moveRight(50)
-            break
+    const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+   
+    const onKeyDown = (event) => {
+    if (keys.hasOwnProperty(event.code)) {
+            keys[event.code] = true;
+            
         }
-      }
-    document.addEventListener('keydown', onKeyDown, false)
+    };
+
+    const onKeyUp = (event) => {
+        if (keys.hasOwnProperty(event.code)) {
+                keys[event.code] = false;
+        }
+    };
+
+    document.addEventListener('keydown', onKeyDown, false);
+    document.addEventListener('keyup', onKeyUp, false);
 
     const menuPanel = document.getElementById('menuPanel') 
     const startButton = document.getElementById('startButton')
@@ -129,7 +129,7 @@ async function init() {
       false
     )
 
-    controls.addEventListener('change', () => console.log("Controls Change"))
+    //controls.addEventListener('change', () => console.log("Controls Change"))
     controls.addEventListener('lock', () => (menuPanel.style.display = 'none'))
     controls.addEventListener('unlock', () => (menuPanel.style.display = 'block'))
 
@@ -139,12 +139,15 @@ async function init() {
     renderer.toneMapping = THREE.ReinhardToneMapping;
     renderer.toneMappingExposure = 2.0;
 
-    const textureloader = new THREE.TextureLoader()
+    
     const carObj1 = await loadFBXModel('Car/Car.fbx');
+    /* 
     const carObj2 = await loadFBXModel('Car/Car.fbx');
     const carObj3 = await loadFBXModel('Car/Car.fbx');
     const carObj4 = await loadFBXModel('Car/Car.fbx');
     const carObj5 = await loadFBXModel('Car/Car.fbx');
+    */
+    
     const garage = await loadFBXModel('Garage/Garage.fbx')
     
 
@@ -155,19 +158,24 @@ async function init() {
     let carDepth = carSize.max.z - carSize.min.z;
 
     carObj1.position.set(0,0,0);
+    
+    /*
     carObj2.position.set(carWidth + 500,0,0);
     carObj3.position.set( carWidth + 1000,0,0);
     carObj4.position.set(-carWidth - 500,0,0);
     carObj5.position.set(-carWidth - 1000,0,0);
+    */
 
     let carBox = new THREE.BoxHelper(carObj1, 0xffff00)
     scene.add(carBox)
 
     scene.add(carObj1)
+    /* 
     scene.add(carObj2)
     scene.add(carObj3)
     scene.add(carObj4)
     scene.add(carObj5)
+    */
 
     garage.position.y = -50;
     garage.scale.set(0.4, 0.2, 0.4);
@@ -182,16 +190,12 @@ async function init() {
     camera.position.y = carHeight - 50;
     camera.position.z = 1000;
     camera.lookAt(scene.position)
-   
-
     scene.add(camera)
 
-    window.addEventListener("resize", () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight)
-        renderer.render(scene, camera)
-    })
+    
+    const raycaster = new THREE.Raycaster();
+    
+
 
 
     scene.traverse((child) => {
@@ -201,29 +205,221 @@ async function init() {
 
     console.log(allObjects);
 
-    updateFrame();
+    // windo event
+    window.addEventListener("resize", windowResize)
+    window.addEventListener( 'pointermove', onPointerMove );
+    controls.addEventListener("change", ()=>{
+        updateControlMove();
+        
+        updateCameraPoint();
 
-    function updateFrame() {
-        renderer.render(scene, camera);
-        stats.update()
+        castRay();
+    } )
 
-        //updateBoundingBox()
 
-        requestAnimationFrame(function () {
-            updateFrame();
-        })
+    // camera direction vector
+    let dirCam = new THREE.Vector3();
+    const camPoint = getSphereSimple();
+    camera.getWorldDirection(dirCam);
+    trackCameraPoint(camPoint);
+    
+    
+    //const dirCameraHelper = new THREE.ArrowHelper(dirCam, camera.position, 10, 0xffff00, 0.25, 0.08 )
+    //scene.add(dirCameraHelper)
+
+    animate();
+
+    function castRay() {
+        raycaster.setFromCamera(pointer, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true); // 'true' to check all children
+    
+        let bbColor = 0xff0000;
+    
+        if (intersects.length > 0) {
+            let object = intersects[0].object;
+    
+            // 🔹 Get the top-level parent (group) if it exists
+            while (object.parent && object.parent !== scene) {
+                object = object.parent; // Climb up the hierarchy to find the top-level group
+            }
+    
+            // ❌ Skip helper objects
+            if (object.type.includes("Helper")) return;
+    
+            // If it's the same group as before, do nothing
+            if (INTERSECTED === object) return;
+    
+            // Reset previous object's emissive color
+            if (INTERSECTED) {
+                if (INTERSECTED.isMesh) { // Single mesh case
+                    resetEmissiveColor(INTERSECTED);
+                } else { // Group case
+                    INTERSECTED.traverse((child) => {
+                        if (child.isMesh) {
+                            resetEmissiveColor(child);
+                        }
+                    });
+                }
+            }
+    
+            INTERSECTED = object; // Store the new top-level object
+    
+            // 🔹 Apply emissive change to the new selection
+            if (INTERSECTED.isMesh) {
+                applyEmissiveColor(INTERSECTED, bbColor);
+            } else {
+                INTERSECTED.traverse((child) => {
+                    if (child.isMesh) {
+                        applyEmissiveColor(child, bbColor);
+                    }
+                });
+            }
+    
+            console.log("Top-Level Intersected Object:", INTERSECTED);
+        } else {
+            // Reset the color of the last intersected object
+            if (INTERSECTED) {
+                if (INTERSECTED.isMesh) {
+                    resetEmissiveColor(INTERSECTED);
+                } else {
+                    INTERSECTED.traverse((child) => {
+                        if (child.isMesh) {
+                            resetEmissiveColor(child);
+                        }
+                    });
+                }
+            }
+    
+            INTERSECTED = null;
+        }
+    }
+    
+    
+    /**
+     * Resets emissive color of a mesh (handles single & multi-material cases)
+     */
+    function resetEmissiveColor(mesh) {
+        if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((mat, i) => {
+                if (mat?.emissive) {
+                    mat.emissive.setHex(mesh.currentHex?.[i] || 0x000000);
+                }
+            });
+        } else if (mesh.material?.emissive) {
+            mesh.material.emissive.setHex(mesh.currentHex || 0x000000);
+        }
+    }
+    
+    /**
+     * Applies emissive color to a mesh (handles single & multi-material cases)
+     */
+    function applyEmissiveColor(mesh, color) {
+        if (Array.isArray(mesh.material)) {
+            mesh.currentHex = mesh.material.map(mat => mat?.emissive?.getHex() || 0x000000);
+            mesh.material.forEach((mat) => {
+                if (mat?.emissive) {
+                    mat.emissive.setHex(color);
+                }
+            });
+        } else if (mesh.material?.emissive) {
+            mesh.currentHex = mesh.material.emissive.getHex();
+            mesh.material.emissive.setHex(color);
+        }
+    }
+    
+    
+    
+
+   
+
+    function onPointerMove( event ) {
+
+        // calculate pointer position in normalized device coordinates
+        // (-1 to +1) for both components 
+        pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+        pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+    
+    }
+    
+    function getCameraLookingAt(distance = 150){
+        camera.getWorldDirection(dirCam);
+        dirCam.normalize();
+        const pointLookingAt = camera.position.clone().add(dirCam.multiplyScalar(distance));
+        return pointLookingAt
     }
 
-    function updateBoundingBox() {
-        bboxHelper.update();
+    function trackCameraPoint(sphere){
+        const point = getCameraLookingAt()
+        sphere.position.copy(point);
+        //sphere.updateMatrixWorld(true);
+    }
+
+    function getSphereSimple(size=1, color=0x27d321 ){
+        const sphereGeometry = new THREE.SphereGeometry(size, size, size);
+        const sphereMaterial = new THREE.MeshBasicMaterial({ color: color })
+        
+        const mesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        scene.add(mesh);
+        return mesh;
+    }
+
+    function updateControlMove(){
+        const moveSpeed = 500
+        const delta = clock.getDelta();
+        const speed = delta * moveSpeed;
+
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        const right = new THREE.Vector3();
+        right.crossVectors(camera.up, direction).normalize() // set this vector to cross of 2 param
+
+
+
+        if (keys.KeyW) camera.position.addScaledVector(direction, speed);  // Move forward
+        if (keys.KeyS) camera.position.addScaledVector(direction, -speed); // Move backward
+        if (keys.KeyA) camera.position.addScaledVector(right, speed);     // Move left
+        if (keys.KeyD) camera.position.addScaledVector(right, -speed);
+
+       
+    }
+
+    function updateCameraPoint(){
+        trackCameraPoint(camPoint);
+    }
+
+    function updateCameraHelper(){
+        let size = 150;
+        camera.getWorldDirection(dirCam);
+    
+        dirCam.normalize();
+    
+        dirCameraHelper.position.copy(camera.position);
+        dirCameraHelper.setDirection(dirCam); // must be unit vector
+
+        dirCameraHelper.updateMatrixWorld(true);
+    }
+
+    function animate() {
+        render();
+        requestAnimationFrame(() => animate());
+    }
+
+    function windowResize(){
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight)
+        renderer.render(scene, camera)
+    }
+    
+    function render(){
+        stats.update();
+        renderer.render(scene, camera);
     }
 
     return scene;
 }
 
-function render(){
-    renderer.render(camera, scene);
-}
+
 function loadOBJModel(objPath, base_path){
     const onProgress = function (xhr) {
         if (xhr.lengthComputable) {
