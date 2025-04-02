@@ -8,12 +8,17 @@ import { GUI } from 'dat.gui';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader'
 import { LoopSubdivision } from 'three-subdivide';
 import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
+import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls'
+
+
 
 const allObjects = []
 
-const modelCache = new Map(); 
 
 const clock = new THREE.Clock();
+
+
+
 
 async function init() {
 
@@ -38,8 +43,18 @@ async function init() {
 
     const scene = new THREE.Scene();
 
-    scene.background = new THREE.CubeTextureLoader().setPath('https://sbcode.net/img/').load(['px.png', 'nx.png', 'py.png', 'ny.png', 'pz.png', 'nz.png'])
-    scene.backgroundBlurriness = 0.5;
+    const cubeTexture = new THREE.CubeTextureLoader()
+    .setPath('BoxPieces/')
+    .load(['px.bmp', 'nx.bmp', 'py.bmp', 'ny.bmp', 'pz.bmp', 'nz.bmp'], function(texture) {
+        console.log("Cube Map Loaded Successfully!", texture);
+    }, undefined, function(error) {
+        console.error("Error Loading Cube Map!", error);
+    });
+
+    scene.background = cubeTexture;scene.backgroundBlurriness = 0.5;
+    scene.background.needsUpdate = true;
+    console.log(scene.background.source)
+
     //scene.background = new THREE.Color(0x4287f5);
 
     scene.add(new THREE.AxesHelper(1000))
@@ -48,54 +63,78 @@ async function init() {
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 3);
     hemiLight.position.set(0, 20, 0);
     
-    const dirLight = new THREE.DirectionalLight(0xffffff, 3);
-    dirLight.position.set(- 3, 5, - 10);
-    dirLight.castShadow = true;
-    dirLight.shadow.camera.top = 2;
-    dirLight.shadow.camera.bottom = - 2;
-    dirLight.shadow.camera.left = - 2;
-    dirLight.shadow.camera.right = 2;
-    dirLight.shadow.camera.near = 0.1;
-    dirLight.shadow.camera.far = 40;
-    
-    
     const ambientLight = new THREE.AmbientLight(0xeb75d9);
 
-    const pointLight = new THREE.PointLight(0x769e73, 15);
-    pointLight.position.set(-200, 1000, 0);
-    
-    const spotLight = new THREE.SpotLight(0xffffff, 10, pointLight.position.y);
-    spotLight.position.copy(pointLight.position);
-    spotLight.angle = Math.PI / 6; // Controls the cone spread
-    spotLight.penumbra = 0.2; // Soft edges
-
     scene.add(hemiLight);
-    scene.add(dirLight);
     scene.add(ambientLight);
-    scene.add(pointLight);
 
 
-    // PLANE
-    let groundTexture = new THREE.TextureLoader().load("planeTexture.jpeg");
+    // Load the texture
+    let groundTexture = new THREE.TextureLoader().load("cracked-cement.jpg");
     groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
-    groundTexture.repeat.set( 10000, 10000 );
     groundTexture.anisotropy = 16;
     groundTexture.encoding = THREE.sRGBEncoding;
-  
-    const plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(5000, 5000), 
-        new THREE.MeshStandardMaterial( { map: groundTexture } ));
-    plane.position.y = 0.0;
-    plane.rotation.x = - Math.PI / 2;
+
+    // Create the plane
+    const planeGeometry = new THREE.PlaneGeometry(5000, 5000);
+    const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+
+    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    plane.position.y = -5.0;
+    plane.rotation.x = -Math.PI / 2;
     plane.receiveShadow = true;
+
+    // Modify UVs to scale the texture instead of repeating it
+    const uvAttribute = plane.geometry.attributes.uv;
+    for (let i = 0; i < uvAttribute.count; i++) {
+        uvAttribute.setX(i, uvAttribute.getX(i) * 10); // Scale X
+        uvAttribute.setY(i, uvAttribute.getY(i) * 10); // Scale Y
+    }
+    uvAttribute.needsUpdate = true;
+
     scene.add(plane);
 
-    const FPScontrols = new OrbitControls(camera, renderer.domElement)
-    FPScontrols.movementSpeed = 500;
-	FPScontrols.lookSpeed = 0.1;
+    let planeBox = new THREE.BoxHelper(plane, 0x000000)
+    scene.add(planeBox)
+
+
+    const controls = new PointerLockControls(camera, renderer.domElement)
+
+    const onKeyDown = function (event) {
+        switch (event.code) {
+          case 'KeyW':
+            controls.moveForward(50)
+            break
+          case 'KeyA':
+            controls.moveRight(-50)
+            break
+          case 'KeyS':
+            controls.moveForward(-50)
+            break
+          case 'KeyD':
+            controls.moveRight(50)
+            break
+        }
+      }
+    document.addEventListener('keydown', onKeyDown, false)
+
+    const menuPanel = document.getElementById('menuPanel') 
+    const startButton = document.getElementById('startButton')
     
-    //scene.add(pointLightHelper);
-    //scene.add(spotLightHelper);
+    startButton.addEventListener(
+      'click',
+      function () {
+        controls.lock()
+      },
+      false
+    )
+
+    controls.addEventListener('change', () => console.log("Controls Change"))
+    controls.addEventListener('lock', () => (menuPanel.style.display = 'none'))
+    controls.addEventListener('unlock', () => (menuPanel.style.display = 'block'))
+
+
+
 
     renderer.toneMapping = THREE.ReinhardToneMapping;
     renderer.toneMappingExposure = 2.0;
@@ -121,22 +160,29 @@ async function init() {
     carObj4.position.set(-carWidth - 500,0,0);
     carObj5.position.set(-carWidth - 1000,0,0);
 
+    let carBox = new THREE.BoxHelper(carObj1, 0xffff00)
+    scene.add(carBox)
+
     scene.add(carObj1)
     scene.add(carObj2)
     scene.add(carObj3)
     scene.add(carObj4)
     scene.add(carObj5)
 
-    garage.position.y = -1;
-    garage.scale.set(0.5, 0.5, 0.5);
-    scene.add(garage)
+    garage.position.y = -50;
+    garage.scale.set(0.4, 0.2, 0.4);
 
+
+    let garageBox = new THREE.BoxHelper(garage, 0xffff00)
+    scene.add(garageBox)
+    scene.add(garage)
     
-    camera.position.x = 10;
-    camera.position.y = 200;
+    
+    camera.position.x = 300;
+    camera.position.y = carHeight - 50;
     camera.position.z = 1000;
     camera.lookAt(scene.position)
-    //controls.update()
+   
 
     scene.add(camera)
 
@@ -144,7 +190,7 @@ async function init() {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight)
-        FPScontrols.handleResize();
+        renderer.render(scene, camera)
     })
 
 
@@ -160,7 +206,6 @@ async function init() {
     function updateFrame() {
         renderer.render(scene, camera);
         stats.update()
-        FPScontrols.update( clock.getDelta())
 
         //updateBoundingBox()
 
@@ -176,7 +221,9 @@ async function init() {
     return scene;
 }
 
-
+function render(){
+    renderer.render(camera, scene);
+}
 function loadOBJModel(objPath, base_path){
     const onProgress = function (xhr) {
         if (xhr.lengthComputable) {
