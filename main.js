@@ -8,8 +8,10 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader'
 import { LoopSubdivision } from 'three-subdivide';
 import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls'
-
-
+import { BufferGeometryUtils } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 
 const allObjects = []
 
@@ -17,7 +19,9 @@ const allObjects = []
 const clock = new THREE.Clock();
 
 const pointer = new THREE.Vector2();
-let INTERSECTED;
+let INTERSECTED = null;
+let selectedObjects = [];
+let composer, outlinePass;
 
 async function init() {
 
@@ -63,9 +67,9 @@ async function init() {
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 3);
     hemiLight.position.set(0, 20, 0);
     
-    const ambientLight = new THREE.AmbientLight(0xeb75d9);
+    const ambientLight = new THREE.AmbientLight(0xffffff);
 
-    scene.add(hemiLight);
+    //scene.add(hemiLight);
     scene.add(ambientLight);
 
 
@@ -141,8 +145,10 @@ async function init() {
 
     
     const carObj1 = await loadFBXModel('Car/Car.fbx');
-    /* 
+    
     const carObj2 = await loadFBXModel('Car/Car.fbx');
+    
+    /* 
     const carObj3 = await loadFBXModel('Car/Car.fbx');
     const carObj4 = await loadFBXModel('Car/Car.fbx');
     const carObj5 = await loadFBXModel('Car/Car.fbx');
@@ -158,9 +164,9 @@ async function init() {
     let carDepth = carSize.max.z - carSize.min.z;
 
     carObj1.position.set(0,0,0);
+    carObj2.position.set(carWidth + 500,0,0);
     
     /*
-    carObj2.position.set(carWidth + 500,0,0);
     carObj3.position.set( carWidth + 1000,0,0);
     carObj4.position.set(-carWidth - 500,0,0);
     carObj5.position.set(-carWidth - 1000,0,0);
@@ -170,8 +176,9 @@ async function init() {
     scene.add(carBox)
 
     scene.add(carObj1)
-    /* 
     scene.add(carObj2)
+    /* 
+    
     scene.add(carObj3)
     scene.add(carObj4)
     scene.add(carObj5)
@@ -192,12 +199,10 @@ async function init() {
     camera.lookAt(scene.position)
     scene.add(camera)
 
-    
+
+
     const raycaster = new THREE.Raycaster();
     
-
-
-
     scene.traverse((child) => {
         if (child.isGroup)
             allObjects.push(child);
@@ -207,13 +212,14 @@ async function init() {
 
     // windo event
     window.addEventListener("resize", windowResize)
+
     window.addEventListener( 'pointermove', onPointerMove );
+
     controls.addEventListener("change", ()=>{
         updateControlMove();
-        
         updateCameraPoint();
-
-        castRay();
+        checkIntersectionWithOutline();
+        //castRay();
     } )
 
 
@@ -222,10 +228,12 @@ async function init() {
     const camPoint = getSphereSimple();
     camera.getWorldDirection(dirCam);
     trackCameraPoint(camPoint);
+
+    // outline selected object
+    setupOutlineEffect(renderer, scene, camera)
     
+
     
-    //const dirCameraHelper = new THREE.ArrowHelper(dirCam, camera.position, 10, 0xffff00, 0.25, 0.08 )
-    //scene.add(dirCameraHelper)
 
     animate();
 
@@ -240,11 +248,18 @@ async function init() {
     
             // 🔹 Get the top-level parent (group) if it exists
             while (object.parent && object.parent !== scene) {
-                object = object.parent; // Climb up the hierarchy to find the top-level group
+                if (object.parent.isGroup){
+                    object = object.parent;
+                    break;
+                }
+                object = object.parent;
             }
+            console.log(object);
     
             // ❌ Skip helper objects
             if (object.type.includes("Helper")) return;
+
+            if (!object.name.includes("Mercedes")) return;
     
             // If it's the same group as before, do nothing
             if (INTERSECTED === object) return;
@@ -275,7 +290,7 @@ async function init() {
                 });
             }
     
-            console.log("Top-Level Intersected Object:", INTERSECTED);
+            //console.log("Top-Level Intersected Object:", INTERSECTED);
         } else {
             // Reset the color of the last intersected object
             if (INTERSECTED) {
@@ -295,42 +310,131 @@ async function init() {
     }
     
     
-    /**
-     * Resets emissive color of a mesh (handles single & multi-material cases)
-     */
-    function resetEmissiveColor(mesh) {
-        if (Array.isArray(mesh.material)) {
-            mesh.material.forEach((mat, i) => {
-                if (mat?.emissive) {
-                    mat.emissive.setHex(mesh.currentHex?.[i] || 0x000000);
-                }
-            });
-        } else if (mesh.material?.emissive) {
-            mesh.material.emissive.setHex(mesh.currentHex || 0x000000);
-        }
+    function addSelectedObject( object ) {
+
+        selectedObjects = [];
+        selectedObjects.push( object );
+
     }
     
-    /**
-     * Applies emissive color to a mesh (handles single & multi-material cases)
-     */
-    function applyEmissiveColor(mesh, color) {
-        if (Array.isArray(mesh.material)) {
-            mesh.currentHex = mesh.material.map(mat => mat?.emissive?.getHex() || 0x000000);
-            mesh.material.forEach((mat) => {
-                if (mat?.emissive) {
-                    mat.emissive.setHex(color);
-                }
-            });
-        } else if (mesh.material?.emissive) {
-            mesh.currentHex = mesh.material.emissive.getHex();
-            mesh.material.emissive.setHex(color);
+    function checkIntersectionWithOutline() {
+        raycaster.setFromCamera(pointer, camera);
+ 
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        
+        if (intersects.length > 0) {
+            let selectedObject = intersects[0].object;
+            
+            while (selectedObject.parent && selectedObject.parent !== scene) {
+                selectedObject = selectedObject.parent;
+            }
+            
+            if (selectedObject.type.includes("Helper")) return;
+            //if (!selectedObject.name.includes("Mercedes")) return;
+            
+            // identical prev object
+            if ( selectedObject === INTERSECTED) return;
+            
+            // the previous intersected object
+            if (INTERSECTED) {
+                removeOutline();
+            }
+
+        
+            INTERSECTED = selectedObject; // Store new selection
+
+            applyOutlineToMesh(selectedObject);
+            handleInteraction(INTERSECTED, true);
+            console.log("INTERSECTING OBJECT:\n", INTERSECTED);
+    
+        } else {
+            // Remove outline if no object is selected
+            if (INTERSECTED) {
+                removeOutline();
+                handleInteraction(INTERSECTED, false);
+                INTERSECTED = null;
+            }
+        }
+
+
+
+
+        function handleInteraction(mesh, isActive) {
+        
         }
     }
-    
-    
     
 
-   
+    function setupOutlineEffect(renderer, scene, camera) {
+        const renderPass = new RenderPass(scene, camera);
+        outlinePass = new OutlinePass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight), 
+            scene, 
+            camera);
+    
+        composer = new EffectComposer(renderer);
+        composer.addPass(renderPass);
+        composer.addPass(outlinePass);
+    }
+
+    function mergeGroupIntoSingleMesh(group) {
+        let geometries = [];
+        let material = null;
+    
+        group.traverse((child) => {
+            if (child.isMesh) {
+                const clonedGeometry = child.geometry.clone(); // Clone to avoid modifying the original
+                clonedGeometry.applyMatrix4(child.matrixWorld); // Apply transformations
+                geometries.push(clonedGeometry);
+    
+                // Save the material (assuming all meshes have the same material)
+                if (!material) material = child.material;
+            }
+        });
+    
+        if (geometries.length === 0) return null; // No meshes found, return null
+    
+        // Merge geometries into one
+        const mergedGeometry = BufferGeometryUtils.mergeBufferGeometries(geometries);
+        const mergedMesh = new THREE.Mesh(mergedGeometry, material);
+    
+        return mergedMesh;
+    }
+
+    function applyOutlineToMesh(mesh) {
+        let meshes = [];
+
+        if (mesh.isGroup) {
+
+            mesh.traverse((child) => {
+                if (child.isMesh) {
+                    //meshes.push(child);
+                }
+            });
+
+            const mergedMesh = mergeGroupIntoSingleMesh(mesh);
+            if (mergedMesh) {
+                meshes.push(mergedMesh);
+            }
+
+        } else if (mesh.isMesh) {
+            meshes.push(mesh);
+        }
+        
+        if (meshes.length === 0) return;
+
+        outlinePass.selectedObjects = meshes; // Highlights the whole mesh
+        outlinePass.edgeStrength = 8; // Adjust thickness
+        outlinePass.edgeGlow = 0.5; 
+        outlinePass.edgeThickness = 2.0;
+        outlinePass.visibleEdgeColor.set(0xff0000); // Red outline
+    }
+    
+    function removeOutline() {
+        outlinePass.selectedObjects = [];
+    }
+
+    
 
     function onPointerMove( event ) {
 
@@ -339,6 +443,8 @@ async function init() {
         pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
         pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
     
+
+        
     }
     
     function getCameraLookingAt(distance = 150){
@@ -373,8 +479,6 @@ async function init() {
         const right = new THREE.Vector3();
         right.crossVectors(camera.up, direction).normalize() // set this vector to cross of 2 param
 
-
-
         if (keys.KeyW) camera.position.addScaledVector(direction, speed);  // Move forward
         if (keys.KeyS) camera.position.addScaledVector(direction, -speed); // Move backward
         if (keys.KeyA) camera.position.addScaledVector(right, speed);     // Move left
@@ -405,15 +509,20 @@ async function init() {
     }
 
     function windowResize(){
-        camera.aspect = window.innerWidth / window.innerHeight;
+
+        const width = window.innerWidth;
+		const height = window.innerHeight;
+        camera.aspect = width/height;
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight)
-        renderer.render(scene, camera)
+        renderer.setSize(width, height)
+        //renderer.render(scene, camera)
+        composer.render();
     }
     
     function render(){
         stats.update();
-        renderer.render(scene, camera);
+        composer.render();
+        //renderer.render(scene, camera);
     }
 
     return scene;
