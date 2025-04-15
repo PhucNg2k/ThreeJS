@@ -13,6 +13,12 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
+import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper.js';
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
+
+// Initialize the RectAreaLight shader chunk support (required for RectAreaLight to work properly)
+RectAreaLightUniformsLib.init();
+
 const clock = new THREE.Clock();
 
 const pointer = new THREE.Vector2();
@@ -53,33 +59,27 @@ async function init() {
         ['px.bmp', 'nx.bmp', 'py.bmp', 'ny.bmp', 'pz.bmp', 'nz.bmp'],
         (texture) => {
             console.log("Cube Map Loaded Successfully!", texture);
+            /* 
             scene.background = texture;
             scene.backgroundBlurriness = 0.1;
             scene.background.needsUpdate = true;
+            */
         },
         undefined,
         (error) => console.error("Error Loading Cube Map!", error)
     );
 
-    scene.background = cubeTexture;
-    scene.backgroundBlurriness = 0.1;
-    scene.background.needsUpdate = true;
-
+    
     //console.log(scene.background.source)
 
-    //scene.background = new THREE.Color(0x4287f5);
+    scene.background = new THREE.Color(0x4287f5);
 
     scene.add(new THREE.AxesHelper(1000))
 
-    // LIGHT
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 3);
-    hemiLight.position.set(0, 20, 0);
-    
-    const ambientLight = new THREE.AmbientLight(0xffffff);
-
-    //scene.add(hemiLight);
+    // LIGHTING
+    // Ambient Light for overall illumination
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // Soft white light, moderate intensity
     scene.add(ambientLight);
-
 
     // Load the texture
     let groundTexture = new THREE.TextureLoader().load(
@@ -92,26 +92,18 @@ async function init() {
     groundTexture.anisotropy = 16;
     groundTexture.encoding = THREE.sRGBEncoding;
 
-    // Create the plane
-    const planeGeometry = new THREE.PlaneGeometry(5000, 5000);
-    const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+    
 
-    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-    plane.position.y = -5.0;
-    plane.rotation.x = -Math.PI / 2;
-    plane.receiveShadow = true;
-
-    // Modify UVs to scale the texture instead of repeating it
-    const uvAttribute = plane.geometry.attributes.uv;
-    for (let i = 0; i < uvAttribute.count; i++) {
-        uvAttribute.setX(i, uvAttribute.getX(i) * 10); // Scale X
-        uvAttribute.setY(i, uvAttribute.getY(i) * 10); // Scale Y
-    }
-    uvAttribute.needsUpdate = true;
-
-    //scene.add(plane);
-
-   
+    /* 
+    const lightFolder = gui.addFolder('Lighting');
+    lightFolder.add(ambientLight, 'intensity', 0, 1).name('Ambient Intensity');
+    lightFolder.add(directionalLight, 'intensity', 0, 2).name('Directional Intensity');
+    lightFolder.add(directionalLight.position, 'x', -1000, 1000).name('Dir Light X');
+    lightFolder.add(directionalLight.position, 'y', -1000, 1000).name('Dir Light Y');
+    lightFolder.add(directionalLight.position, 'z', -1000, 1000).name('Dir Light Z');
+    
+    lightFolder.open();
+    */
 
     const controls = new PointerLockControls(camera, renderer.domElement)
 
@@ -119,6 +111,7 @@ async function init() {
    
     const onKeyDown = (event) => {
     if (keys.hasOwnProperty(event.code)) {
+            //console.log(event.code)
             keys[event.code] = true;
             
         }
@@ -149,14 +142,11 @@ async function init() {
     controls.addEventListener('unlock', () => (menuPanel.style.display = 'block'))
 
 
+    // Enable shadows in the renderer
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-
-    renderer.toneMapping = THREE.ReinhardToneMapping;
-    renderer.toneMappingExposure = 2.0;
-
-    
     const carObj1 = await loadFBXModel('Car/Car.fbx');
-    
     const carObj2 = await loadFBXModel('Car/Car.fbx');
     
     /* 
@@ -184,6 +174,24 @@ async function init() {
     */
 
 
+
+    // After loading carObj1 and carObj2
+    carObj1.traverse((child) => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+        }
+    });
+    carObj2.traverse((child) => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+        }
+    });
+
+    
+
+
     scene.add(carObj1)
     scene.add(carObj2)
     /* 
@@ -197,8 +205,98 @@ async function init() {
     garage.name = "Garage"
     garage.position.y = -50;
     garage.scale.set(0.4, 0.2, 0.4);
-    scene.add(garage)
     
+    // After loading garage
+    garage.traverse((child) => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+        }
+    });
+
+    //scene.add(garage)
+    
+    let garageSize = new THREE.Box3().setFromObject(garage);
+    let garageWidth = garageSize.max.x - garageSize.min.x;
+    let garageHeight = garageSize.max.y - garageSize.min.y;
+    let garageDepth = garageSize.max.z - garageSize.min.z;
+
+    // 2. Spotlights (simulate ceiling spotlights)
+    const numLights = 3;
+    for (let i = 0; i < numLights; i++) {
+        const spotLight = new THREE.SpotLight(0xffffff, 1.2);
+        const spacing = garageWidth / (numLights + 1);
+        const x = garageSize.min.x + spacing * (i + 1);
+        const y = garageSize.max.y - 100; // slightly above garage
+        const z = (garageSize.min.z + garageSize.max.z) / 2;
+
+        spotLight.position.set(x, y, z);
+        spotLight.angle = Math.PI / 6;
+        spotLight.penumbra = 0.3;
+        spotLight.decay = 2;
+        spotLight.distance = garageHeight * 1.5;
+
+        spotLight.castShadow = true;
+        spotLight.shadow.mapSize.width = 1024;
+        spotLight.shadow.mapSize.height = 1024;
+        spotLight.shadow.camera.near = 10;
+        spotLight.shadow.camera.far = 5000;
+        spotLight.shadow.camera.updateProjectionMatrix();
+
+        let spotLightHelper = new THREE.SpotLightHelper( spotLight );
+        scene.add( spotLightHelper );
+        scene.add(spotLight);
+        scene.add(spotLight.target)
+
+        const shadowHelper = new THREE.CameraHelper(spotLight.shadow.camera);
+        scene.add(shadowHelper);
+    }
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(500, 1000, 500);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 1024;
+    directionalLight.shadow.mapSize.height = 1024;
+    directionalLight.shadow.camera.near = 100;
+    directionalLight.shadow.camera.far = 2000;
+    directionalLight.shadow.camera.left = -1000;
+    directionalLight.shadow.camera.right = 1000;
+    directionalLight.shadow.camera.top = 1000;
+    directionalLight.shadow.camera.bottom = -1000;
+
+    //scene.add(directionalLight);
+
+
+    // Create the plane
+    const planeGeometry = new THREE.PlaneGeometry(5000, 5000);
+    const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+    planeMaterial.receiveShadow = true;
+    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    plane.position.y = -5.0;
+    plane.rotation.x = -Math.PI / 2;
+    plane.receiveShadow = true;
+
+    // Modify UVs to scale the texture instead of repeating it
+    const uvAttribute = plane.geometry.attributes.uv;
+    for (let i = 0; i < uvAttribute.count; i++) {
+        uvAttribute.setX(i, uvAttribute.getX(i) * 10); // Scale X
+        uvAttribute.setY(i, uvAttribute.getY(i) * 10); // Scale Y
+    }
+    uvAttribute.needsUpdate = true;
+
+    let tmpplane =getPlane(5000)
+    tmpplane.material = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    tmpplane.receiveShadow = true;
+    tmpplane.material.needsUpdate = true;
+    tmpplane.position.y = -5.0;
+    tmpplane.rotation.x = -Math.PI / 2;
+    
+    scene.add(tmpplane);
+
+
+// Optional: RectAreaLight helper (for visualization)
+  
+      
     
     camera.position.x = 300;
     camera.position.y = carHeight - 50;
@@ -254,11 +352,13 @@ async function init() {
     window.addEventListener( 'pointermove', onPointerMove );
     
     controls.addEventListener("change", ()=>{
-        updateControlMove();
-        updateCameraPoint();
         checkIntersectionWithOutline(RayCastObjects);
-        //castRay();
+        
+    
     } )
+
+
+    
 
     // camera direction vector
     let dirCam = new THREE.Vector3();
@@ -270,6 +370,8 @@ async function init() {
 
     // outline selected object
     setupOutlineEffect(renderer, scene, camera)
+    
+
     
 
     animate();
@@ -305,7 +407,7 @@ async function init() {
                 child.add(colliderBox)
                 
                 const box = new THREE.BoxHelper( colliderBox, 0xffff00 );
-                scene.add( box );
+                //scene.add( box );
             }
         }
         return {raycastObjects, rayCastMapping}
@@ -379,6 +481,12 @@ async function init() {
 
        
     }
+
+    function updateCamera() {
+        updateControlMove();
+        updateCameraPoint(); 
+    }
+
 
     function handleInteraction(mesh) {
         if (isMouseClicked) {
@@ -482,7 +590,6 @@ async function init() {
     function trackCameraPoint(sphere){
         const point = getCameraLookingAt()
         sphere.position.copy(point);
-        //sphere.updateMatrixWorld(true);
     }
 
     function getSphereSimple(size=1, color=0x27d321 ){
@@ -493,23 +600,28 @@ async function init() {
         return mesh;
     }
 
-    function updateControlMove(){
-        const moveSpeed = 500
-        const delta = clock.getDelta();
+    
+
+    function updateControlMove() {
+        const moveSpeed = 500;
+        const delta = Math.min(clock.getDelta(), 0.1);;
         const speed = delta * moveSpeed;
 
         const direction = new THREE.Vector3();
-        camera.getWorldDirection(direction);
         const right = new THREE.Vector3();
-        right.crossVectors(camera.up, direction).normalize() // set this vector to cross of 2 param
 
-        if (keys.KeyW) camera.position.addScaledVector(direction, speed);  // Move forward
-        if (keys.KeyS) camera.position.addScaledVector(direction, -speed); // Move backward
-        if (keys.KeyA) camera.position.addScaledVector(right, speed);     // Move left
+        camera.getWorldDirection(direction);
+        direction.normalize(); // just in case
+
+        right.crossVectors(camera.up, direction).normalize();
+
+        if (keys.KeyW) camera.position.addScaledVector(direction, speed);
+        if (keys.KeyS) camera.position.addScaledVector(direction, -speed);
+        if (keys.KeyA) camera.position.addScaledVector(right, speed);
         if (keys.KeyD) camera.position.addScaledVector(right, -speed);
-
-       
     }
+
+   
 
     function updateCameraPoint(){
         trackCameraPoint(camPoint);
@@ -528,8 +640,9 @@ async function init() {
     }
 
     function animate() {
+        requestAnimationFrame(animate);
+        updateCamera();
         render();
-        requestAnimationFrame(() => animate());
     }
 
     function windowResize(){
@@ -540,13 +653,13 @@ async function init() {
         camera.updateProjectionMatrix();
         renderer.setSize(width, height)
         //renderer.render(scene, camera)
-        composer.render();
+        render()
     }
     
     function render(){
         stats.update();
-        composer.render();
-        //renderer.render(scene, camera);
+        //composer.render();
+        renderer.render(scene, camera);
     }
 
     return scene;
@@ -618,20 +731,6 @@ function loadOBJ_MTLModel(objPath, mtlPath, base_path) {
 
 }
 
-function checkCollisionWorld() {
-    for (let i = 0; i < allObjects.length; i++) {
-        let obj = allObjects[i];
-        let bboxA = new THREE.Box3().setFromObject(allObjects[i]);
-
-        for (let j = i + 1; j < allObjects.length; j++) {
-            let bboxB = new THREE.Box3().setFromObject(allMeshes[j]);
-            if (bboxA.intersectsBox(bboxB)) {
-                console.log(`Collision detected between ${allMeshes[i].name} and ${allMeshes[j].name}`);
-            }
-        }
-
-    }
-}
 
 
 function checkCollision(groupA, groupB) {
@@ -669,7 +768,7 @@ function getBox(w, h, d) {
 function getPlane(size) {
     let geometry = new THREE.PlaneGeometry(size, size);
     let material = new THREE.MeshBasicMaterial({
-        color: 0xff0000,
+        color: 0Xcfd6ce,
         side: THREE.DoubleSide
     });
 
