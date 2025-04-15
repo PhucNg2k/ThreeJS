@@ -231,7 +231,24 @@ async function init() {
     console.log("RaycastObjects:", RayCastObjects);
     console.log("RayCastMapping: ", RayCastMapping)
 
+    
+
     // windo event
+
+    let isMouseClicked = false;
+
+    window.addEventListener('mousedown', () => {
+        isMouseClicked = true;
+        //console.log('MOUSE DOWN! ', isMouseClicked)
+        if (INTERSECTED) handleInteraction(INTERSECTED, isMouseClicked);
+    });
+
+    window.addEventListener('mouseup', () => {
+        isMouseClicked = false;
+        //console.log('MOUSE UP!' , isMouseClicked)
+    });
+
+
     window.addEventListener("resize", windowResize)
 
     window.addEventListener( 'pointermove', onPointerMove );
@@ -318,6 +335,7 @@ async function init() {
     function checkIntersectionWithOutline(objList) { // raycast only works with group Object
         raycaster.setFromCamera(pointer, camera);
  
+        
         const intersectsList = raycaster.intersectObjects(objList, true);
         //console.log("Raycaster checking objects:", scene.children);
         
@@ -348,25 +366,26 @@ async function init() {
         
 
             applyOutlineToMesh(retrieveObjectWithUUID(og_object_uuid));
-            handleInteraction(INTERSECTED, true);
-
-            console.log("INTERSECTING OBJECT:\n", INTERSECTED);
+            
+            //console.log("INTERSECTING OBJECT:\n", INTERSECTED);
     
         } else {
             // Remove outline if no object is selected
             if (INTERSECTED) {
                 removeOutline();
-                handleInteraction(INTERSECTED, false);
                 INTERSECTED = null;
             }
         }
 
+       
+    }
 
-
-
-        function handleInteraction(mesh, isActive) {
-        
+    function handleInteraction(mesh) {
+        if (isMouseClicked) {
+            console.log("🎯 Object clicked:", mesh);
+            isMouseClicked = false
         }
+        return;
     }
     
     function getSimplifyCollider(mesh) {
