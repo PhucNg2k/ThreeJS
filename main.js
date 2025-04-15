@@ -8,20 +8,21 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader'
 import { LoopSubdivision } from 'three-subdivide';
 import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls'
-import { BufferGeometryUtils } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
-
-const allObjects = []
-
+import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 const clock = new THREE.Clock();
 
 const pointer = new THREE.Vector2();
 let INTERSECTED = null;
-let selectedObjects = [];
 let composer, outlinePass;
+
+const globalScaleValue = 0.5;
+
+let SceneObject = {}
+
 
 async function init() {
 
@@ -48,16 +49,23 @@ async function init() {
 
     const cubeTexture = new THREE.CubeTextureLoader()
     .setPath('BoxPieces/')
-    .load(['px.bmp', 'nx.bmp', 'py.bmp', 'ny.bmp', 'pz.bmp', 'nz.bmp'], function(texture) {
-        console.log("Cube Map Loaded Successfully!", texture);
-    }, undefined, function(error) {
-        console.error("Error Loading Cube Map!", error);
-    });
+    .load(
+        ['px.bmp', 'nx.bmp', 'py.bmp', 'ny.bmp', 'pz.bmp', 'nz.bmp'],
+        (texture) => {
+            console.log("Cube Map Loaded Successfully!", texture);
+            scene.background = texture;
+            scene.backgroundBlurriness = 0.1;
+            scene.background.needsUpdate = true;
+        },
+        undefined,
+        (error) => console.error("Error Loading Cube Map!", error)
+    );
 
     scene.background = cubeTexture;
     scene.backgroundBlurriness = 0.1;
     scene.background.needsUpdate = true;
-    console.log(scene.background.source)
+
+    //console.log(scene.background.source)
 
     //scene.background = new THREE.Color(0x4287f5);
 
@@ -74,7 +82,12 @@ async function init() {
 
 
     // Load the texture
-    let groundTexture = new THREE.TextureLoader().load("cracked-cement.jpg");
+    let groundTexture = new THREE.TextureLoader().load(
+        "cracked-cement.jpg",
+        () => console.log("groundTexture loaded successfully"),
+        undefined,
+        (err) => console.error("Error loading texture:", err)
+    );
     groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
     groundTexture.anisotropy = 16;
     groundTexture.encoding = THREE.sRGBEncoding;
@@ -98,9 +111,7 @@ async function init() {
 
     //scene.add(plane);
 
-    let planeBox = new THREE.BoxHelper(plane, 0x000000)
-    //scene.add(planeBox)
-
+   
 
     const controls = new PointerLockControls(camera, renderer.domElement)
 
@@ -154,11 +165,11 @@ async function init() {
     const carObj5 = await loadFBXModel('Car/Car.fbx');
     */
     
-    const garage = await loadFBXModel('Garage/Garage.fbx')
+    
     
 
     let carSize = new THREE.Box3().setFromObject(carObj1);
-    console.log(carSize);
+    
     let carWidth = carSize.max.x - carSize.min.x;
     let carHeight = carSize.max.y - carSize.min.y;
     let carDepth = carSize.max.z - carSize.min.z;
@@ -172,8 +183,6 @@ async function init() {
     carObj5.position.set(-carWidth - 1000,0,0);
     */
 
-    let carBox = new THREE.BoxHelper(carObj1, 0xffff00)
-    scene.add(carBox)
 
     scene.add(carObj1)
     scene.add(carObj2)
@@ -184,12 +193,10 @@ async function init() {
     scene.add(carObj5)
     */
 
+    const garage = await loadFBXModel('Garage/Garage.fbx')
+    garage.name = "Garage"
     garage.position.y = -50;
     garage.scale.set(0.4, 0.2, 0.4);
-
-
-    let garageBox = new THREE.BoxHelper(garage, 0xffff00)
-    scene.add(garageBox)
     scene.add(garage)
     
     
@@ -199,33 +206,48 @@ async function init() {
     camera.lookAt(scene.position)
     scene.add(camera)
 
+    for (let child of scene.children) {
+        let child_uuid = child.uuid;
+        SceneObject[child_uuid] = child;
+
+    }
+
+    // make dictionary store uuid - raycast_uuid
+
 
 
     const raycaster = new THREE.Raycaster();
     
-    scene.traverse((child) => {
-        if (child.isGroup)
-            allObjects.push(child);
-    })
+    let { raycastObjects: RayCastObjects, rayCastMapping: RayCastMapping } = createRayCastObjects();
 
-    console.log(allObjects);
+
+
+    //scaleGlobalAll(globalScaleValue)
+
+
+    //////////////////////////////
+    console.log("Scene objects Scene:", scene.children);
+    console.log("Scene objects SceneObject:", SceneObject);
+    console.log("RaycastObjects:", RayCastObjects);
+    console.log("RayCastMapping: ", RayCastMapping)
 
     // windo event
     window.addEventListener("resize", windowResize)
 
     window.addEventListener( 'pointermove', onPointerMove );
-
+    
     controls.addEventListener("change", ()=>{
         updateControlMove();
         updateCameraPoint();
-        checkIntersectionWithOutline();
+        checkIntersectionWithOutline(RayCastObjects);
         //castRay();
     } )
-
 
     // camera direction vector
     let dirCam = new THREE.Vector3();
     const camPoint = getSphereSimple();
+    camPoint.name = "CamPoint"
+    scene.add(camPoint)
     camera.getWorldDirection(dirCam);
     trackCameraPoint(camPoint);
 
@@ -233,101 +255,79 @@ async function init() {
     setupOutlineEffect(renderer, scene, camera)
     
 
-    
-
     animate();
 
-    function castRay() {
-        raycaster.setFromCamera(pointer, camera);
-        const intersects = raycaster.intersectObjects(scene.children, true); // 'true' to check all children
-    
-        let bbColor = 0xff0000;
-    
-        if (intersects.length > 0) {
-            let object = intersects[0].object;
-    
-            // 🔹 Get the top-level parent (group) if it exists
-            while (object.parent && object.parent !== scene) {
-                if (object.parent.isGroup){
-                    object = object.parent;
-                    break;
-                }
-                object = object.parent;
-            }
-            console.log(object);
-    
-            // ❌ Skip helper objects
-            if (object.type.includes("Helper")) return;
+    function createRayCastObjects() {
+        let raycastObjects = []
+        let rayCastMapping = {}
 
-            if (!object.name.includes("Mercedes")) return;
-    
-            // If it's the same group as before, do nothing
-            if (INTERSECTED === object) return;
-    
-            // Reset previous object's emissive color
-            if (INTERSECTED) {
-                if (INTERSECTED.isMesh) { // Single mesh case
-                    resetEmissiveColor(INTERSECTED);
-                } else { // Group case
-                    INTERSECTED.traverse((child) => {
-                        if (child.isMesh) {
-                            resetEmissiveColor(child);
-                        }
-                    });
+        for (let child of scene.children) {
+           
+            if (child.isGroup) {
+
+                if (checkMultiMeshesGroup(child)) {
+                    const mergedMesh = mergeGroupIntoSingleMesh(child);
+                    
+                    mergedMesh.name = child.name + "_merged_collider";
+                    mergedMesh.applyMatrix4( child.matrixWorld.clone().invert() )
+                    child.add(mergedMesh)
+                    raycastObjects.push(mergedMesh);
+                    rayCastMapping[mergedMesh.uuid] = child.uuid;
+                    console.log("MergedMesh: ", mergedMesh);
+
+                    continue;
                 }
+
+                let colliderBox = getSimplifyCollider(child);
+                colliderBox.name = child.name + "_collider"
+                colliderBox.applyMatrix4(child.matrixWorld.clone().invert()); // apply local space to collider box before add parent
+
+                raycastObjects.push(colliderBox)
+                rayCastMapping[colliderBox.uuid] = child.uuid;
+                
+                child.add(colliderBox)
+                
+                const box = new THREE.BoxHelper( colliderBox, 0xffff00 );
+                scene.add( box );
             }
+        }
+        return {raycastObjects, rayCastMapping}
+    }
     
-            INTERSECTED = object; // Store the new top-level object
-    
-            // 🔹 Apply emissive change to the new selection
-            if (INTERSECTED.isMesh) {
-                applyEmissiveColor(INTERSECTED, bbColor);
-            } else {
-                INTERSECTED.traverse((child) => {
-                    if (child.isMesh) {
-                        applyEmissiveColor(child, bbColor);
-                    }
-                });
+    function checkMultiMeshesGroup(obj) {
+        if (obj.isGroup){
+            if (obj.children.length > 1) {
+                return true
             }
+        }
+        return false
+    }
+
+    function scaleGlobalAll(scaleValue) {
+        scene.traverse((child) => {
+            child.scale.multiplyScalar(scaleValue);
+        });
+    }
     
-            //console.log("Top-Level Intersected Object:", INTERSECTED);
-        } else {
-            // Reset the color of the last intersected object
-            if (INTERSECTED) {
-                if (INTERSECTED.isMesh) {
-                    resetEmissiveColor(INTERSECTED);
-                } else {
-                    INTERSECTED.traverse((child) => {
-                        if (child.isMesh) {
-                            resetEmissiveColor(child);
-                        }
-                    });
-                }
-            }
-    
-            INTERSECTED = null;
+    function scaleGlobalDirectChild(scaleValue) {
+        for (let child of scene.children) {
+            child.scale.multiplyScalar(scaleValue);
         }
     }
-    
-    
-    function addSelectedObject( object ) {
 
-        selectedObjects = [];
-        selectedObjects.push( object );
-
-    }
-    
-    function checkIntersectionWithOutline() {
+    function checkIntersectionWithOutline(objList) { // raycast only works with group Object
         raycaster.setFromCamera(pointer, camera);
  
-        const intersects = raycaster.intersectObjects(scene.children, true);
+        const intersectsList = raycaster.intersectObjects(objList, true);
+        //console.log("Raycaster checking objects:", scene.children);
         
-        if (intersects.length > 0) {
-            let selectedObject = intersects[0].object;
-            
-            while (selectedObject.parent && selectedObject.parent !== scene) {
-                selectedObject = selectedObject.parent;
-            }
+        if (intersectsList.length > 0) {
+            let selectedObject = intersectsList[0].object;
+
+
+            //while (selectedObject.parent && selectedObject.parent !== scene) {
+              //  selectedObject = selectedObject.parent;
+            //}
             
             if (selectedObject.type.includes("Helper")) return;
             //if (!selectedObject.name.includes("Mercedes")) return;
@@ -342,9 +342,14 @@ async function init() {
 
         
             INTERSECTED = selectedObject; // Store new selection
+            
+            let collider_uuid = INTERSECTED.uuid
+            let og_object_uuid = RayCastMapping[collider_uuid] 
+        
 
-            applyOutlineToMesh(selectedObject);
+            applyOutlineToMesh(retrieveObjectWithUUID(og_object_uuid));
             handleInteraction(INTERSECTED, true);
+
             console.log("INTERSECTING OBJECT:\n", INTERSECTED);
     
         } else {
@@ -364,6 +369,23 @@ async function init() {
         }
     }
     
+    function getSimplifyCollider(mesh) {
+        const box = new THREE.Box3().setFromObject(mesh);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+
+        const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+        const collider = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ visible: false }));
+        collider.position.copy(center);
+        return collider
+    }
+
+    function retrieveObjectWithUUID(uuid) {
+        let object = scene.getObjectByProperty('uuid', uuid)
+        return object
+    }
 
     function setupOutlineEffect(renderer, scene, camera) {
         const renderPass = new RenderPass(scene, camera);
@@ -383,7 +405,8 @@ async function init() {
     
         group.traverse((child) => {
             if (child.isMesh) {
-                const clonedGeometry = child.geometry.clone(); // Clone to avoid modifying the original
+                const clonedGeometry = child.geometry.clone(); // Clone to avoid modifying the original -> should be BufferGeometry instance
+                
                 clonedGeometry.applyMatrix4(child.matrixWorld); // Apply transformations
                 geometries.push(clonedGeometry);
     
@@ -395,39 +418,22 @@ async function init() {
         if (geometries.length === 0) return null; // No meshes found, return null
     
         // Merge geometries into one
-        const mergedGeometry = BufferGeometryUtils.mergeBufferGeometries(geometries);
+        const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
+
         const mergedMesh = new THREE.Mesh(mergedGeometry, material);
-    
+       
         return mergedMesh;
     }
 
     function applyOutlineToMesh(mesh) {
-        let meshes = [];
 
-        if (mesh.isGroup) {
 
-            mesh.traverse((child) => {
-                if (child.isMesh) {
-                    //meshes.push(child);
-                }
-            });
-
-            const mergedMesh = mergeGroupIntoSingleMesh(mesh);
-            if (mergedMesh) {
-                meshes.push(mergedMesh);
-            }
-
-        } else if (mesh.isMesh) {
-            meshes.push(mesh);
-        }
-        
-        if (meshes.length === 0) return;
-
-        outlinePass.selectedObjects = meshes; // Highlights the whole mesh
+        outlinePass.selectedObjects = [mesh]; // Highlights the whole mesh
         outlinePass.edgeStrength = 8; // Adjust thickness
         outlinePass.edgeGlow = 0.5; 
         outlinePass.edgeThickness = 2.0;
         outlinePass.visibleEdgeColor.set(0xff0000); // Red outline
+
     }
     
     function removeOutline() {
@@ -465,7 +471,6 @@ async function init() {
         const sphereMaterial = new THREE.MeshBasicMaterial({ color: color })
         
         const mesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-        scene.add(mesh);
         return mesh;
     }
 
