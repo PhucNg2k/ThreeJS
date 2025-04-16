@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import Stats from 'three/addons/libs/stats.module.js'
-import { GUI } from 'dat.gui';
+
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader'
 import { LoopSubdivision } from 'three-subdivide';
 import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
@@ -15,6 +15,7 @@ import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUti
 
 import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
+import GUI from 'lil-gui';
 
 // Initialize the RectAreaLight shader chunk support (required for RectAreaLight to work properly)
 RectAreaLightUniformsLib.init();
@@ -32,7 +33,7 @@ let SceneObject = {}
 
 async function init() {
 
-    const gui = new GUI();
+    //const gui = new GUI();
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -79,7 +80,7 @@ async function init() {
     // LIGHTING
     // Ambient Light for overall illumination
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // Soft white light, moderate intensity
-    scene.add(ambientLight);
+    //scene.add(ambientLight);
 
     // Load the texture
     let groundTexture = new THREE.TextureLoader().load(
@@ -179,13 +180,13 @@ async function init() {
     carObj1.traverse((child) => {
         if (child.isMesh) {
             child.castShadow = true;
-            child.receiveShadow = true;
+            child.receiveShadow = false;
         }
     });
     carObj2.traverse((child) => {
         if (child.isMesh) {
             child.castShadow = true;
-            child.receiveShadow = true;
+            child.receiveShadow = false;
         }
     });
 
@@ -214,7 +215,7 @@ async function init() {
         }
     });
 
-    //scene.add(garage)
+    scene.add(garage)
     
     let garageSize = new THREE.Box3().setFromObject(garage);
     let garageWidth = garageSize.max.x - garageSize.min.x;
@@ -222,38 +223,47 @@ async function init() {
     let garageDepth = garageSize.max.z - garageSize.min.z;
 
     // 2. Spotlights (simulate ceiling spotlights)
-    const numLights = 3;
+    const numLights = 1;
     for (let i = 0; i < numLights; i++) {
-        const spotLight = new THREE.SpotLight(0xffffff, 1.2);
-        const spacing = garageWidth / (numLights + 1);
+        const spotLight = new THREE.SpotLight(0xffff00, 10000);
+        const spacing = garageWidth / (numLights + 1) + 500;
         const x = garageSize.min.x + spacing * (i + 1);
-        const y = garageSize.max.y - 100; // slightly above garage
-        const z = (garageSize.min.z + garageSize.max.z) / 2;
+        const y = garageSize.max.y - 300; // slightly above garage
+        const z = (garageSize.min.z + garageSize.max.z) / 2 - 1200;
 
+        console.log(x,y,z)
         spotLight.position.set(x, y, z);
         spotLight.angle = Math.PI / 6;
         spotLight.penumbra = 0.3;
         spotLight.decay = 2;
-        spotLight.distance = garageHeight * 1.5;
+        spotLight.distance = garageHeight * 2;
+        
 
         spotLight.castShadow = true;
         spotLight.shadow.mapSize.width = 1024;
         spotLight.shadow.mapSize.height = 1024;
         spotLight.shadow.camera.near = 10;
-        spotLight.shadow.camera.far = 5000;
+        spotLight.shadow.camera.far = spotLight.distance;
+        spotLight.shadow.camera.left = -1000;
+        spotLight.shadow.camera.right = 1000;
+        spotLight.shadow.camera.top = 1000;
+        spotLight.shadow.camera.bottom = -1000;
+        spotLight.target.position.set(200,300,0)
+
         spotLight.shadow.camera.updateProjectionMatrix();
 
         let spotLightHelper = new THREE.SpotLightHelper( spotLight );
-        scene.add( spotLightHelper );
-        scene.add(spotLight);
-        scene.add(spotLight.target)
+        
 
         const shadowHelper = new THREE.CameraHelper(spotLight.shadow.camera);
-        scene.add(shadowHelper);
+        //scene.add( spotLightHelper );
+        //scene.add(spotLight);
+        //scene.add(spotLight.target)
+        //scene.add(shadowHelper);
     }
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(500, 1000, 500);
+    directionalLight.position.set(500, 766, -1200);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 1024;
     directionalLight.shadow.mapSize.height = 1024;
@@ -264,7 +274,10 @@ async function init() {
     directionalLight.shadow.camera.top = 1000;
     directionalLight.shadow.camera.bottom = -1000;
 
-    //scene.add(directionalLight);
+    scene.add(directionalLight);
+
+    const helper = new THREE.DirectionalLightHelper( directionalLight, 5 );
+    scene.add( helper );
 
 
     // Create the plane
@@ -285,13 +298,12 @@ async function init() {
     uvAttribute.needsUpdate = true;
 
     let tmpplane =getPlane(5000)
-    tmpplane.material = new THREE.MeshStandardMaterial({ color: 0xffffff });
     tmpplane.receiveShadow = true;
     tmpplane.material.needsUpdate = true;
     tmpplane.position.y = -5.0;
     tmpplane.rotation.x = -Math.PI / 2;
     
-    scene.add(tmpplane);
+    scene.add(plane);
 
 
 // Optional: RectAreaLight helper (for visualization)
@@ -335,11 +347,22 @@ async function init() {
 
     let isMouseClicked = false;
 
-    window.addEventListener('mousedown', () => {
+    window.addEventListener('mousedown', (addEventListener) => {
+        const guiPanel = document.getElementById('objectInfoPanel');
+
+        if (guiPanel.contains(event.target)) {
+        // Clicked inside the GUI panel, ignore
+            return;
+        }
+
         isMouseClicked = true;
-        //console.log('MOUSE DOWN! ', isMouseClicked)
-        if (INTERSECTED) handleInteraction(INTERSECTED, isMouseClicked);
-    });
+
+        if (INTERSECTED) {
+            handleInteraction(INTERSECTED, isMouseClicked)
+            
+            };
+        }
+    ) ;
 
     window.addEventListener('mouseup', () => {
         isMouseClicked = false;
@@ -487,15 +510,61 @@ async function init() {
         updateCameraPoint(); 
     }
 
-
-    function handleInteraction(mesh) {
+    function handleInteraction(mesh, isMouseClicked) {
         if (isMouseClicked) {
             console.log("🎯 Object clicked:", mesh);
             isMouseClicked = false
+
+            const collider_uuid = mesh.uuid;
+            const original_uuid = RayCastMapping[collider_uuid];
+            const targetObject = retrieveObjectWithUUID(original_uuid);
+
+            if (targetObject) {
+                console.log("TARGET OBJECT: ", targetObject)
+                setupObjectGUI(targetObject);
+            } else {
+                console.warn("Original object not found for UUID:", original_uuid);
+            }
+
         }
+
         return;
     }
+    let objectGui;
+    function setupObjectGUI(mesh) {
+        const panel = document.getElementById('objectInfoPanel');
+        const details = document.getElementById('objectDetails');
+        const guiContainer = document.getElementById('objectGui');
     
+        guiContainer.innerHTML = '';
+        if (objectGui) {
+            objectGui.destroy?.();
+            objectGui = null;
+        }
+    
+        const info = `
+            <strong>Name:</strong> ${mesh.name}<br/>
+            <strong>UUID:</strong> ${mesh.uuid}<br/>
+        `;
+        details.innerHTML = info;
+        panel.style.display = 'block';
+    
+        objectGui = new GUI({ autoPlace: false, width: 300 });
+        guiContainer.appendChild(objectGui.domElement);
+    
+        const rotationFolder = objectGui.addFolder('Rotation');
+        rotationFolder.add(mesh.rotation, 'x', 0, Math.PI * 2).step(0.01);
+        rotationFolder.add(mesh.rotation, 'y', 0, Math.PI * 2).step(0.01);
+        rotationFolder.add(mesh.rotation, 'z', 0, Math.PI * 2).step(0.01);
+        rotationFolder.open();
+    
+        const scaleFolder = objectGui.addFolder('Scale');
+        scaleFolder.add(mesh.scale, 'x', 0.1, 10).step(0.1);
+        scaleFolder.add(mesh.scale, 'y', 0.1, 10).step(0.1);
+        scaleFolder.add(mesh.scale, 'z', 0.1, 10).step(0.1);
+        scaleFolder.open();
+    }
+
     function getSimplifyCollider(mesh) {
         const box = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
@@ -767,8 +836,8 @@ function getBox(w, h, d) {
 
 function getPlane(size) {
     let geometry = new THREE.PlaneGeometry(size, size);
-    let material = new THREE.MeshBasicMaterial({
-        color: 0Xcfd6ce,
+    let material = new THREE.MeshStandardMaterial({
+        color: 0X5ab3c6,
         side: THREE.DoubleSide
     });
 
