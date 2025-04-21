@@ -109,18 +109,35 @@ async function init() {
     const controls = new PointerLockControls(camera, renderer.domElement)
 
     const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+    function resetKeys(){
+        for (let key in keys) {
+            keys[key] = false;
+        }
+    }
    
     const onKeyDown = (event) => {
-    if (keys.hasOwnProperty(event.code)) {
-            //console.log(event.code)
-            keys[event.code] = true;
-            
-        }
+
+        if (controls.isLocked) {
+            //console.log("KeyPressed: ", event.code)
+            if (event.code === "KeyP") {
+                controls.unlock();
+                menuPanel.style.display = 'block'
+            }
+
+            if (keys.hasOwnProperty(event.code)) {
+                    //console.log(event.code)
+                    keys[event.code] = true;
+                    
+                    }
+                }
     };
+    
 
     const onKeyUp = (event) => {
+        if (controls.isLocked) {
         if (keys.hasOwnProperty(event.code)) {
                 keys[event.code] = false;
+            }
         }
     };
 
@@ -132,15 +149,31 @@ async function init() {
     
     startButton.addEventListener(
       'click',
-      function () {
-        controls.lock()
+       () => {
+        controls.lock();
+        menuPanel.style.display = 'none'
+
       },
       false
     )
 
+    
     //controls.addEventListener('change', () => console.log("Controls Change"))
-    controls.addEventListener('lock', () => (menuPanel.style.display = 'none'))
-    controls.addEventListener('unlock', () => (menuPanel.style.display = 'block'))
+    controls.addEventListener('lock', (event) => { 
+        //console.log('Controls locked:', controls.isLocked);
+
+        menuPanel.style.display = 'none'
+        //console.log('Controls Unlocked:', !controls.isLocked);
+    })
+
+
+    controls.addEventListener('unlock', (event) => {
+        resetKeys();
+    });
+
+
+    
+
 
 
     // Enable shadows in the renderer
@@ -168,6 +201,8 @@ async function init() {
     carObj1.position.set(0,0,0);
     carObj2.position.set(carWidth + 500,0,0);
     
+
+
     /*
     carObj3.position.set( carWidth + 1000,0,0);
     carObj4.position.set(-carWidth - 500,0,0);
@@ -189,8 +224,6 @@ async function init() {
             child.receiveShadow = false;
         }
     });
-
-    
 
 
     scene.add(carObj1)
@@ -231,7 +264,7 @@ async function init() {
         const y = garageSize.max.y - 300; // slightly above garage
         const z = (garageSize.min.z + garageSize.max.z) / 2 - 1200;
 
-        console.log(x,y,z)
+       //console.log(x,y,z)
         spotLight.position.set(x, y, z);
         spotLight.angle = Math.PI / 6;
         spotLight.penumbra = 0.3;
@@ -347,22 +380,46 @@ async function init() {
 
     let isMouseClicked = false;
 
-    window.addEventListener('mousedown', (addEventListener) => {
+    window.addEventListener('mousedown', (event) => {
         const guiPanel = document.getElementById('objectInfoPanel');
-
-        if (guiPanel.contains(event.target)) {
-        // Clicked inside the GUI panel, ignore
+    
+        const clickedInsideGUI = guiPanel.contains(event.target);
+    
+        // 🛑 Case 1: Clicked inside the GUI menu → do nothing
+        if (clickedInsideGUI) return;
+    
+        // 🔒 Case 2: In unlocked mode (GUI open), click outside to resume control
+        if (!controls.isLocked) {
+            setTimeout(() => { 
+                controls.lock();
+                clearGuiPanel(guiPanel);
+                // update Camera P
+                
+            }, 0); // Lock without triggering interaction
             return;
         }
-
+    
+        // 🎯 Case 3: In normal locked mode → run raycast and interaction
+        checkIntersection(RayCastObjects); // refresh raycast data
         isMouseClicked = true;
-
+    
         if (INTERSECTED) {
-            handleInteraction(INTERSECTED, isMouseClicked)
-            
-            };
+            handleInteraction(INTERSECTED, isMouseClicked);
+        } else {
+            // No hit: hide menu + cleanup
+            clearGuiPanel(guiPanel);
+            removeOutline();
         }
-    ) ;
+    });
+    
+
+    function clearGuiPanel(guiPanel){
+        guiPanel.style.display = 'none';
+        if (objectGui) {
+            objectGui.destroy?.();
+            objectGui = null;
+        }
+    }
 
     window.addEventListener('mouseup', () => {
         isMouseClicked = false;
@@ -375,9 +432,9 @@ async function init() {
     window.addEventListener( 'pointermove', onPointerMove );
     
     controls.addEventListener("change", ()=>{
-        checkIntersectionWithOutline(RayCastObjects);
+        checkIntersection(RayCastObjects);
+
         
-    
     } )
 
 
@@ -429,10 +486,13 @@ async function init() {
                 
                 child.add(colliderBox)
                 
-                const box = new THREE.BoxHelper( colliderBox, 0xffff00 );
-                //scene.add( box );
+                const boxHelper = new THREE.BoxHelper( colliderBox, 0xffff00 );
+                colliderBox.userData.helper = boxHelper;
+                scene.add( boxHelper);
             }
         }
+        
+        
         return {raycastObjects, rayCastMapping}
     }
     
@@ -442,32 +502,20 @@ async function init() {
                 return true
             }
         }
-        return false
+        return false 
     }
 
-    function scaleGlobalAll(scaleValue) {
-        scene.traverse((child) => {
-            child.scale.multiplyScalar(scaleValue);
-        });
-    }
+
     
-    function scaleGlobalDirectChild(scaleValue) {
-        for (let child of scene.children) {
-            child.scale.multiplyScalar(scaleValue);
-        }
-    }
 
-    function checkIntersectionWithOutline(objList) { // raycast only works with group Object
+
+    function checkIntersection(objList) { // raycast only works with group Object
         raycaster.setFromCamera(pointer, camera);
- 
         
         const intersectsList = raycaster.intersectObjects(objList, true);
-        //console.log("Raycaster checking objects:", scene.children);
-        
+    
         if (intersectsList.length > 0) {
             let selectedObject = intersectsList[0].object;
-
-
             //while (selectedObject.parent && selectedObject.parent !== scene) {
               //  selectedObject = selectedObject.parent;
             //}
@@ -496,9 +544,11 @@ async function init() {
     
         } else {
             // Remove outline if no object is selected
+            //console.log("Hit nothing: ", INTERSECTED)
             if (INTERSECTED) {
                 removeOutline();
                 INTERSECTED = null;
+
             }
         }
 
@@ -506,12 +556,16 @@ async function init() {
     }
 
     function updateCamera() {
-        updateControlMove();
+        updateControlMove(keys);
         updateCameraPoint(); 
     }
 
+
     function handleInteraction(mesh, isMouseClicked) {
         if (isMouseClicked) {
+            
+            controls.unlock();
+
             console.log("🎯 Object clicked:", mesh);
             isMouseClicked = false
 
@@ -530,6 +584,7 @@ async function init() {
 
         return;
     }
+
     let objectGui;
     function setupObjectGUI(mesh) {
         const panel = document.getElementById('objectInfoPanel');
@@ -551,6 +606,12 @@ async function init() {
     
         objectGui = new GUI({ autoPlace: false, width: 300 });
         guiContainer.appendChild(objectGui.domElement);
+
+        const positionFolder = objectGui.addFolder('Position')
+        positionFolder.add(mesh.position, 'x', mesh.position.x-500,mesh.position.x+500).step(1);
+        positionFolder.add(mesh.position, 'y', mesh.position.y-500,mesh.position.y+500).step(1);
+        positionFolder.add(mesh.position, 'z', mesh.position.z-500,mesh.position.z+500).step(1);
+        positionFolder.open()
     
         const rotationFolder = objectGui.addFolder('Rotation');
         rotationFolder.add(mesh.rotation, 'x', 0, Math.PI * 2).step(0.01);
@@ -638,26 +699,39 @@ async function init() {
 
     
 
-    function onPointerMove( event ) {
-
-        // calculate pointer position in normalized device coordinates
-        // (-1 to +1) for both components 
-        pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-        pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-    
-
-        
+    function onPointerMove(event) {
+        // Calculate pointer position in normalized device coordinates (-1 to +1)
+        if (controls.isLocked) {
+            // When controls are locked, force pointer to screen center
+            pointer.set(0, 0);
+            //console.log('Pointer updated (locked):', pointer.x.toFixed(2), pointer.y.toFixed(2));
+        } else {
+            // When controls are unlocked, update pointer based on mouse position
+            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            //console.log('Pointer updated (unlocked):', pointer.x.toFixed(2), pointer.y.toFixed(2));
+        }
     }
-    
-    function getCameraLookingAt(distance = 150){
-        camera.getWorldDirection(dirCam);
-        dirCam.normalize();
-        const pointLookingAt = camera.position.clone().add(dirCam.multiplyScalar(distance));
-        return pointLookingAt
+
+    function getCameraLookingAt(pointer, distance = 150, usePointer = false) {
+        if (usePointer && !controls.isLocked) {
+            // Use pointer coordinates for raycasting when controls are unlocked
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(pointer, camera);
+            const direction = raycaster.ray.direction.clone().normalize();
+            const pointLookingAt = camera.position.clone().add(direction.multiplyScalar(distance));
+            return pointLookingAt;
+        } else {
+            // Default: use camera's forward direction (screen center)
+            camera.getWorldDirection(dirCam);
+            dirCam.normalize();
+            const pointLookingAt = camera.position.clone().add(dirCam.multiplyScalar(distance));
+            return pointLookingAt;
+        }
     }
 
     function trackCameraPoint(sphere){
-        const point = getCameraLookingAt()
+        const point = getCameraLookingAt(pointer, 150, false); // Pass pointer and enable usePointer
         sphere.position.copy(point);
     }
 
@@ -671,7 +745,7 @@ async function init() {
 
     
 
-    function updateControlMove() {
+    function updateControlMove(keys) {
         const moveSpeed = 500;
         const delta = Math.min(clock.getDelta(), 0.1);;
         const speed = delta * moveSpeed;
@@ -683,7 +757,6 @@ async function init() {
         direction.normalize(); // just in case
 
         right.crossVectors(camera.up, direction).normalize();
-
         if (keys.KeyW) camera.position.addScaledVector(direction, speed);
         if (keys.KeyS) camera.position.addScaledVector(direction, -speed);
         if (keys.KeyA) camera.position.addScaledVector(right, speed);
@@ -696,17 +769,7 @@ async function init() {
         trackCameraPoint(camPoint);
     }
 
-    function updateCameraHelper(){
-        let size = 150;
-        camera.getWorldDirection(dirCam);
     
-        dirCam.normalize();
-    
-        dirCameraHelper.position.copy(camera.position);
-        dirCameraHelper.setDirection(dirCam); // must be unit vector
-
-        dirCameraHelper.updateMatrixWorld(true);
-    }
 
     function animate() {
         requestAnimationFrame(animate);
@@ -727,6 +790,7 @@ async function init() {
     
     function render(){
         stats.update();
+        UpdateBoxHelper(RayCastObjects);
         //composer.render();
         renderer.render(scene, camera);
     }
@@ -734,6 +798,13 @@ async function init() {
     return scene;
 }
 
+function UpdateBoxHelper(raycastObjects) {
+    raycastObjects.forEach(obj => {
+        if (obj.userData.helper) {
+            obj.userData.helper.update();
+        }
+    });
+}
 
 function loadOBJModel(objPath, base_path){
     const onProgress = function (xhr) {
@@ -809,13 +880,6 @@ function checkCollision(groupA, groupB) {
     return bboxA.intersectBox(bboxB);
 }
 
-
-
-function checkTextureExists(url) {
-    return fetch(url, { method: "HEAD" })
-        .then(response => response.ok) // Returns true if texture exists
-        .catch(() => false); // Returns false if fetch fails
-}
 
 
 function getBox(w, h, d) {
