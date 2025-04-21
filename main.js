@@ -121,7 +121,7 @@ async function init() {
             //console.log("KeyPressed: ", event.code)
             if (event.code === "KeyP") {
                 controls.unlock();
-                menuPanel.style.display = 'block'
+                startPanel.style.display = 'block'
             }
 
             if (keys.hasOwnProperty(event.code)) {
@@ -144,14 +144,14 @@ async function init() {
     document.addEventListener('keydown', onKeyDown, false);
     document.addEventListener('keyup', onKeyUp, false);
 
-    const menuPanel = document.getElementById('menuPanel') 
+    const startPanel = document.getElementById('startPanel') 
     const startButton = document.getElementById('startButton')
     
     startButton.addEventListener(
       'click',
        () => {
         controls.lock();
-        menuPanel.style.display = 'none'
+        startPanel.style.display = 'none'
 
       },
       false
@@ -162,7 +162,7 @@ async function init() {
     controls.addEventListener('lock', (event) => { 
         //console.log('Controls locked:', controls.isLocked);
 
-        menuPanel.style.display = 'none'
+        startPanel.style.display = 'none'
         //console.log('Controls Unlocked:', !controls.isLocked);
     })
 
