@@ -189,7 +189,9 @@ async function init() {
     const carObj5 = await loadFBXModel('Car/Car.fbx');
     */
     
-    
+    // Set names for car objects to make them identifiable
+    carObj1.name = "Car1"; 
+    carObj2.name = "Car2";
     
 
     let carSize = new THREE.Box3().setFromObject(carObj1);
@@ -355,27 +357,34 @@ async function init() {
         // 🛑 Case 1: Clicked inside the GUI menu → do nothing
         if (clickedInsideGUI) return;
     
-        // 🔒 Case 2: In unlocked mode (GUI open), click outside to resume control
-        if (!controls.isLocked) {
-            setTimeout(() => { 
-                controls.lock();
-                clearGuiPanel(guiPanel);
-                // update Camera P
-                
-            }, 0); // Lock without triggering interaction
-            return;
-        }
-    
-        // 🎯 Case 3: In normal locked mode → run raycast and interaction
-        checkIntersection(RayCastObjects); // refresh raycast data
+        // Set the mouse click flag to true first
         isMouseClicked = true;
-    
+        
+        // 🎯 Case 2: In normal mode → run raycast and interaction
+        checkIntersection(RayCastObjects); // refresh raycast data
+        
         if (INTERSECTED) {
+            // Log at the exact time of click
+            console.log("Object intersected on click:", INTERSECTED);
+            console.log("Object name:", INTERSECTED.name);
+            
+            // Unlock controls before handling interaction
+            controls.unlock();
+            
+            // Handle the interaction with the detected object
             handleInteraction(INTERSECTED, isMouseClicked);
         } else {
-            // No hit: hide menu + cleanup
-            clearGuiPanel(guiPanel);
-            removeOutline();
+            // 🔒 Case 3: No object clicked, and in unlocked mode → resume control
+            if (!controls.isLocked) {
+                setTimeout(() => { 
+                    controls.lock();
+                    clearGuiPanel(guiPanel);
+                }, 0);
+            } else {
+                // No hit: hide menu + cleanup
+                clearGuiPanel(guiPanel);
+                removeOutline();
+            }
         }
     });
     
@@ -480,46 +489,51 @@ async function init() {
         raycaster.setFromCamera(pointer, camera);
         
         const intersectsList = raycaster.intersectObjects(objList, true);
+        console.log("Intersection list:", intersectsList.length > 0 ? "Hit something" : "Nothing hit");
     
         if (intersectsList.length > 0) {
             let selectedObject = intersectsList[0].object;
-            //while (selectedObject.parent && selectedObject.parent !== scene) {
-              //  selectedObject = selectedObject.parent;
-            //}
+            console.log("Selected object:", selectedObject);
             
-            if (selectedObject.type.includes("Helper")) return;
-            //if (!selectedObject.name.includes("Mercedes")) return;
+            if (selectedObject.type.includes("Helper")) {
+                console.log("Skipping helper object");
+                return;
+            }
             
             // identical prev object
-            if ( selectedObject === INTERSECTED) return;
+            if (selectedObject === INTERSECTED) {
+                console.log("Same object as before, skipping");
+                return;
+            }
             
             // the previous intersected object
             if (INTERSECTED) {
                 removeOutline();
             }
 
-        
             INTERSECTED = selectedObject; // Store new selection
             
-            let collider_uuid = INTERSECTED.uuid
-            let og_object_uuid = RayCastMapping[collider_uuid] 
-        
-
-            applyOutlineToMesh(retrieveObjectWithUUID(og_object_uuid));
+            let collider_uuid = INTERSECTED.uuid;
+            console.log("Collider UUID:", collider_uuid);
             
-            //console.log("INTERSECTING OBJECT:\n", INTERSECTED);
-    
+            let og_object_uuid = RayCastMapping[collider_uuid];
+            console.log("Original object UUID:", og_object_uuid);
+            
+            let originalObject = retrieveObjectWithUUID(og_object_uuid);
+            console.log("Original object:", originalObject);
+            
+            if (originalObject) {
+                console.log("Original object name:", originalObject.name);
+                applyOutlineToMesh(originalObject);
+            }
         } else {
             // Remove outline if no object is selected
-            //console.log("Hit nothing: ", INTERSECTED)
+            console.log("No intersection found");
             if (INTERSECTED) {
                 removeOutline();
                 INTERSECTED = null;
-
             }
         }
-
-       
     }
 
     function updateCamera() {
@@ -529,27 +543,33 @@ async function init() {
 
 
     function handleInteraction(mesh, isMouseClicked) {
-        if (isMouseClicked) {
-            
-            controls.unlock();
-
-            console.log("🎯 Object clicked:", mesh);
-            isMouseClicked = false
-
-            const collider_uuid = mesh.uuid;
-            const original_uuid = RayCastMapping[collider_uuid];
-            const targetObject = retrieveObjectWithUUID(original_uuid);
-
-            if (targetObject) {
-                console.log("TARGET OBJECT: ", targetObject)
-                setupObjectGUI(targetObject);
-            } else {
-                console.warn("Original object not found for UUID:", original_uuid);
-            }
-
+        console.log("Handle interaction called for:", mesh);
+        
+        const collider_uuid = mesh.uuid;
+        const original_uuid = RayCastMapping[collider_uuid];
+        const targetObject = retrieveObjectWithUUID(original_uuid);
+        
+        if (targetObject) {
+            console.log("TARGET OBJECT:", targetObject);
+            console.log("TARGET OBJECT NAME:", targetObject.name);
+        } else {
+            console.warn("Original object not found for UUID:", original_uuid);
         }
 
-        return;
+        // Check if the object is a car or part of a car
+        if (mesh.name.includes("Car") || 
+            (targetObject && targetObject.name && targetObject.name.includes("Car"))) {
+            console.log("Car detected! Redirecting to podium page");
+            
+            // Use direct location change for more reliable navigation
+            window.location.replace('podium.html');
+            return;
+        }
+
+        if (targetObject) {
+            console.log("Setting up GUI for:", targetObject);
+            setupObjectGUI(targetObject);
+        }
     }
 
     let objectGui;
