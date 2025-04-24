@@ -255,46 +255,10 @@ async function init() {
     let garageHeight = garageSize.max.y - garageSize.min.y;
     let garageDepth = garageSize.max.z - garageSize.min.z;
 
-    // 2. Spotlights (simulate ceiling spotlights)
-    const numLights = 1;
-    for (let i = 0; i < numLights; i++) {
-        const spotLight = new THREE.SpotLight(0xffff00, 10000);
-        const spacing = garageWidth / (numLights + 1) + 500;
-        const x = garageSize.min.x + spacing * (i + 1);
-        const y = garageSize.max.y - 300; // slightly above garage
-        const z = (garageSize.min.z + garageSize.max.z) / 2 - 1200;
 
-       //console.log(x,y,z)
-        spotLight.position.set(x, y, z);
-        spotLight.angle = Math.PI / 6;
-        spotLight.penumbra = 0.3;
-        spotLight.decay = 2;
-        spotLight.distance = garageHeight * 2;
-        
+    //LIGHTNING
 
-        spotLight.castShadow = true;
-        spotLight.shadow.mapSize.width = 1024;
-        spotLight.shadow.mapSize.height = 1024;
-        spotLight.shadow.camera.near = 10;
-        spotLight.shadow.camera.far = spotLight.distance;
-        spotLight.shadow.camera.left = -1000;
-        spotLight.shadow.camera.right = 1000;
-        spotLight.shadow.camera.top = 1000;
-        spotLight.shadow.camera.bottom = -1000;
-        spotLight.target.position.set(200,300,0)
-
-        spotLight.shadow.camera.updateProjectionMatrix();
-
-        let spotLightHelper = new THREE.SpotLightHelper( spotLight );
-        
-
-        const shadowHelper = new THREE.CameraHelper(spotLight.shadow.camera);
-        //scene.add( spotLightHelper );
-        //scene.add(spotLight);
-        //scene.add(spotLight.target)
-        //scene.add(shadowHelper);
-    }
-
+    
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(500, 766, -1200);
     directionalLight.castShadow = true;
@@ -311,6 +275,9 @@ async function init() {
 
     const helper = new THREE.DirectionalLightHelper( directionalLight, 5 );
     scene.add( helper );
+    
+
+
 
 
     // Create the plane
