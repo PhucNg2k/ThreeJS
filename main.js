@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import Stats from "three/addons/libs/stats.module.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls";
@@ -474,26 +476,18 @@ async function init() {
     carControls.brake = false;
     carSpeed = 0;
 
-    // Capture initial Y rotation from quaternion
-    const euler = new THREE.Euler().setFromQuaternion(selectedCar.quaternion);
-    selectedCar.userData.yRotation = euler.y;
+    selectedCar.quaternion.set(0, 0, 0, 1); // Reset the car's orientation
+    selectedCar.rotation.y = 0; // Preserve only the Y-axis rotation if needed
+    selectedCar.up.set(0, 1, 0); // Align the car's "up" vector with the world's Y-axis
 
-    // Initialize car's quaternion based on Y rotation
-    selectedCar.quaternion.setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      selectedCar.userData.yRotation
-    );
-    selectedCar.updateMatrixWorld();
-
-    // Initialize direction
-    selectedCar.userData.direction = new THREE.Vector3(0, 0, 1);
-    selectedCar.userData.direction.applyQuaternion(selectedCar.quaternion);
-
+    // Create driving GUI
     createDrivingGUI();
+
+    // Setup initial camera position behind the car
     updateCarFollowCamera(true);
+
     console.log(`Now driving: ${selectedCar.name}`);
   }
-
   function exitCarDriving() {
     isDriving = false;
     carSpeed = 0;
@@ -612,40 +606,6 @@ async function init() {
       }
     }
   }
-  // First, modify the enterCarDriving function:
-  function enterCarDriving(car) {
-    isDriving = true;
-    selectedCar = car;
-    controls.unlock();
-
-    // Reset car controls
-    carControls.forward = false;
-    carControls.backward = false;
-    carControls.left = false;
-    carControls.right = false;
-    carControls.brake = false;
-    carSpeed = 0;
-    const currentYRotation = selectedCar.rotation.y;
-    selectedCar.rotation.set(0, currentYRotation, 0);
-
-    // Ensure the car is properly aligned with the ground
-    selectedCar.up.set(0, 1, 0);
-
-    // Initialize the car's direction based on its current orientation
-    const direction = new THREE.Vector3(0, 0, 1);
-    direction.applyQuaternion(selectedCar.quaternion);
-    selectedCar.userData.direction = direction;
-
-    // Create driving GUI
-    createDrivingGUI();
-
-    // Setup initial camera position behind the car
-    updateCarFollowCamera(true);
-
-    console.log(`Now driving: ${selectedCar.name}`);
-  }
-
-  // Then, modify the updateCarDriving function:
   function updateCarDriving() {
     if (!selectedCar || !isDriving) return;
 
@@ -676,7 +636,7 @@ async function init() {
     // Clamp speed
     carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
 
-    // FIX: Only apply turning to Y-axis rotation
+    // Apply turning
     if (carSpeed !== 0) {
       if (carControls.left) {
         selectedCar.rotation.y += carTurnSpeed * Math.sign(carSpeed);
@@ -686,17 +646,9 @@ async function init() {
       }
     }
 
-    // FIX: Calculate direction vector correctly based only on Y rotation
+    // Update direction vector based on car's rotation
     const direction = new THREE.Vector3(0, 0, 1);
-    // Create a quaternion from only the Y rotation
-    const yRotationQuaternion = new THREE.Quaternion();
-    yRotationQuaternion.setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      selectedCar.rotation.y
-    );
-    direction.applyQuaternion(yRotationQuaternion);
-
-    // Update the car's direction
+    direction.applyQuaternion(selectedCar.quaternion);
     selectedCar.userData.direction.copy(direction);
 
     // Update position based on speed and direction
@@ -704,52 +656,23 @@ async function init() {
       selectedCar.userData.direction.clone().multiplyScalar(carSpeed)
     );
 
-    // Ground constraint - keep car on ground
+    // Ground constraint
     selectedCar.position.y = 0;
 
-    // FIX: Force the car to maintain horizontal orientation
-    // Always reset X and Z rotation to prevent tilting/vertical orientation
-    selectedCar.rotation.x = 0;
-    selectedCar.rotation.y = 0;
-    selectedCar.rotation.z = 0;
-  }
-
-  function updateCarFollowCamera(instant = false) {
-    if (!selectedCar || !isDriving) return;
-
-    const carDirection = new THREE.Vector3(0, 0, 1);
-    const yRotationQuaternion = new THREE.Quaternion();
-    yRotationQuaternion.setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      selectedCar.rotation.y
-    );
-    carDirection.applyQuaternion(yRotationQuaternion);
-
-    const cameraOffset = carDirection
-      .clone()
-      .multiplyScalar(-thirdPersonCameraDistance);
-    cameraOffset.y = thirdPersonCameraHeight;
-
-    const targetPosition = selectedCar.position.clone().add(cameraOffset);
-
-    if (instant) {
-      // Instantly set camera position
-      camera.position.copy(targetPosition);
-    } else {
-      // Smoothly transition camera position
-      camera.position.lerp(targetPosition, cameraLerpFactor);
+    // Allow some tilt but prevent extreme rotation to avoid flipping
+    // Only constrain if tilting too much
+    const maxTiltAngle = 0.3; // About 17 degrees max tilt
+    if (Math.abs(selectedCar.rotation.x) > maxTiltAngle) {
+      selectedCar.rotation.x = Math.sign(selectedCar.rotation.x) * maxTiltAngle;
     }
-
-    // Look at a point slightly above the car for better view
-    camera.lookAt(
-      selectedCar.position
-        .clone()
-        .add(new THREE.Vector3(0, thirdPersonCameraHeight * 0.3, 0))
-    );
+    if (Math.abs(selectedCar.rotation.z) > maxTiltAngle) {
+      selectedCar.rotation.z = Math.sign(selectedCar.rotation.z) * maxTiltAngle;
+    }
   }
   function updateCarFollowCamera(instant = false) {
     if (!selectedCar || !isDriving) return;
 
+    // Calculate ideal camera position
     const cameraOffset = selectedCar.userData.direction
       .clone()
       .multiplyScalar(-thirdPersonCameraDistance);
@@ -1024,6 +947,25 @@ function UpdateBoxHelper(raycastObjects) {
   });
 }
 
+function loadOBJModel(objPath, base_path) {
+  const onProgress = function (xhr) {
+    if (xhr.lengthComputable) {
+      const percentComplete = (xhr.loaded / xhr.total) * 100;
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    new OBJLoader().setPath(base_path).load(
+      objPath,
+      (obj) => {
+        resolve(obj);
+      },
+      onProgress,
+      reject
+    );
+  });
+}
+
 function loadFBXModel(fbxPath) {
   const onProgress = function (xhr) {
     if (xhr.lengthComputable) {
@@ -1041,6 +983,46 @@ function loadFBXModel(fbxPath) {
       reject
     );
   });
+}
+
+function loadOBJ_MTLModel(objPath, mtlPath, base_path) {
+  const onProgress = function (xhr) {
+    if (xhr.lengthComputable) {
+      const percentComplete = (xhr.loaded / xhr.total) * 100;
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    new MTLLoader().setPath(base_path).load(mtlPath, (materials) => {
+      materials.preload();
+      new OBJLoader()
+        .setMaterials(materials)
+        .setPath(base_path)
+        .load(
+          objPath,
+          (obj) => {
+            resolve(obj);
+          },
+          onProgress,
+          reject
+        );
+    });
+  });
+}
+
+function checkCollision(groupA, groupB) {
+  let bboxA = new THREE.Box3.setFromObject(groupA);
+  let bboxB = new THREE.Box3.setFromObject(groupB);
+  return bboxA.intersectBox(bboxB);
+}
+
+function getBox(w, h, d) {
+  let geometry = new THREE.BoxGeometry(w, h, d);
+  let material = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+  });
+  let mesh = new THREE.Mesh(geometry, material);
+  return mesh;
 }
 
 function getPlane(size) {
