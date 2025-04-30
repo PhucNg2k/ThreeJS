@@ -90,8 +90,11 @@ async function init() {
     if (controls.isLocked) {
       if (event.code === "KeyP") {
         controls.unlock();
+
         startPanel.style.display = "block";
-      }
+      
+    
+    }
       if (keys.hasOwnProperty(event.code)) {
         keys[event.code] = true;
       }
@@ -173,12 +176,10 @@ async function init() {
     },
     false
   );
-  controls.addEventListener("lock", (event) => {
-    startPanel.style.display = "none";
-  });
-  controls.addEventListener("unlock", (event) => {
-    resetKeys();
-  });
+
+ 
+
+  
 
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -331,22 +332,79 @@ async function init() {
   console.log("RaycastObjects:", RayCastObjects);
   console.log("RayCastMapping: ", RayCastMapping);
 
+  /*
+  LOCK EVENT:
+-> MOUSE UP 
+
+-> MOUSE DOWN -> REGISTER CAMERA
+-> OBJECT
+-> UNLOCK EVENT  -> RESUME CAMERA
+
+
+UNLOCK EVENT:
+-> MOUSE UP 
+(WILL NOT REGISTER MOUSE DOWN EVENT)
+-> LOCK EVENT  
+
+*/
+
+
+  let savedCameraState = null;
+
+  controls.addEventListener("lock", (event) => {
+    console.log("(LOCK) EVENT")
+    startPanel.style.display = "none";
+  });
+
+  
+  controls.addEventListener("unlock", (event) => {
+    console.log("(UNLOCK) EVENT")
+    resetKeys();
+
+    if (savedCameraState) {
+        camera.position.copy(savedCameraState.position);
+        camera.quaternion.copy(savedCameraState.quaternion);
+        renderer.render(scene, camera);
+        //savedCameraState = null; // Clear after restoring
+    }
+    
+  });
+
   let isMouseClicked = false;
+
+  window.addEventListener("mouseup", () => {
+    console.log("MOUSE UP EVENT")
+    isMouseClicked = false;
+  });
+
+
   window.addEventListener("mousedown", (event) => {
+    console.log("MOUSE DOWN EVENT")
+    savedCameraState = {
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+    };
+
     const guiPanel = document.getElementById("objectInfoPanel");
     const clickedInsideGUI = guiPanel.contains(event.target);
     if (clickedInsideGUI) return;
 
+    // unlock and click outside GUI -> to resume
     if (!controls.isLocked && !isDriving) {
-      setTimeout(() => {
+        
+        
         controls.lock();
         clearGuiPanel(guiPanel);
-      }, 0);
       return;
     }
 
     checkIntersection(RayCastObjects);
     isMouseClicked = true;
+
+    let lookAtPos = new THREE.Vector3();
+    camera.getWorldDirection(lookAtPos);
+    console.log("Looking at (MOUSE DOWN): ", lookAtPos);
+
 
     if (INTERSECTED) {
       handleInteraction(INTERSECTED, isMouseClicked);
@@ -357,16 +415,12 @@ async function init() {
   });
 
   function clearGuiPanel(guiPanel) {
-    guiPanel.style.display = "none";
-    if (objectGui) {
-      objectGui.destroy?.();
-      objectGui = null;
+        if (guiPanel) {
+            guiPanel.style.display = "none";
+        }
     }
-  }
 
-  window.addEventListener("mouseup", () => {
-    isMouseClicked = false;
-  });
+  
 
   window.addEventListener("resize", windowResize);
   window.addEventListener("pointermove", onPointerMove);
@@ -375,11 +429,10 @@ async function init() {
     checkIntersection(RayCastObjects);
   });
 
-  let dirCam = new THREE.Vector3();
+  
   const camPoint = getSphereSimple();
   camPoint.name = "CamPoint";
   scene.add(camPoint);
-  camera.getWorldDirection(dirCam);
   trackCameraPoint(camPoint);
 
   setupOutlineEffect(renderer, scene, camera);
@@ -454,13 +507,11 @@ async function init() {
   }
 
   function updateCamera() {
-    if (isDriving) {
-      updateCarDriving();
-      updateCarFollowCamera();
-    } else {
-      updateControlMove(keys);
-      updateCameraPoint();
-    }
+    
+    updateControlMove(keys);
+    updateCameraPoint();
+    
+    
   }
 
   function enterCarDriving(car) {
@@ -705,9 +756,11 @@ async function init() {
 
   function handleInteraction(mesh, isMouseClicked) {
     if (isMouseClicked) {
+  
       controls.unlock();
+      
       console.log("🎯 Object clicked:", mesh);
-      isMouseClicked = false;
+
 
       const collider_uuid = mesh.uuid;
       const original_uuid = RayCastMapping[collider_uuid];
@@ -715,16 +768,6 @@ async function init() {
 
       if (targetObject) {
         console.log("TARGET OBJECT: ", targetObject);
-
-        // Check if it's one of our cars
-        if (cars.includes(targetObject)) {
-          // Ask user if they want to drive this car
-          if (confirm(`Do you want to drive the ${targetObject.name}?`)) {
-            enterCarDriving(targetObject);
-            return;
-          }
-        }
-
         setupObjectGUI(targetObject);
       } else {
         console.warn("Original object not found for UUID:", original_uuid);
@@ -733,7 +776,6 @@ async function init() {
     return;
   }
 
-  let objectGui;
 
   function setupObjectGUI(mesh) {
     const panel = document.getElementById("objectInfoPanel");
@@ -741,19 +783,15 @@ async function init() {
     const guiContainer = document.getElementById("objectGui");
     guiContainer.innerHTML = "";
 
-    if (objectGui) {
-      objectGui.destroy?.();
-      objectGui = null;
-    }
-
     const info = `
             <strong>Name:</strong> ${mesh.name}<br/>
             <strong>UUID:</strong> ${mesh.uuid}<br/>
         `;
+
     details.innerHTML = info;
     panel.style.display = "block";
 
-    objectGui = new GUI({ autoPlace: false, width: 300 });
+    let objectGui = new GUI({ autoPlace: false, width: 300 });
     guiContainer.appendChild(objectGui.domElement);
 
     // Add drive button if it's a car
@@ -857,36 +895,32 @@ async function init() {
     outlinePass.selectedObjects = [];
   }
 
+
+  let cameraOrienState = new THREE.Vector3(); // for direction
+
+
   function onPointerMove(event) {
+    if (isMouseClicked) return; // debounce pointer
     if (controls.isLocked) {
       pointer.set(0, 0);
     } else {
       pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
       pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      camera.getWorldDirection(cameraOrienState); // Save live facing
     }
   }
 
-  function getCameraLookingAt(pointer, distance = 150, usePointer = false) {
-    if (usePointer && !controls.isLocked) {
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(pointer, camera);
-      const direction = raycaster.ray.direction.clone().normalize();
-      const pointLookingAt = camera.position
-        .clone()
-        .add(direction.multiplyScalar(distance));
-      return pointLookingAt;
-    } else {
-      camera.getWorldDirection(dirCam);
-      dirCam.normalize();
-      const pointLookingAt = camera.position
-        .clone()
-        .add(dirCam.multiplyScalar(distance));
-      return pointLookingAt;
-    }
+  function getCameraLookingAt(distance = 150) {
+    let dirCam = new THREE.Vector3();
+    camera.getWorldDirection(dirCam);
+    dirCam.normalize();
+    const pointLookingAt = camera.position.clone().add(dirCam.multiplyScalar(distance));
+    return pointLookingAt;
   }
 
   function trackCameraPoint(sphere) {
-    const point = getCameraLookingAt(pointer, 150, false);
+    const point = getCameraLookingAt(150);
     sphere.position.copy(point);
   }
 
