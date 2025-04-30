@@ -489,45 +489,47 @@ function animate() {
 }
 
 // Updated function to handle both car and container
+// Thay thế toàn bộ hàm addCarPositionControls bằng hàm này
 function addCarPositionControls(car, container, podiumCenter, defaultY) {
     const gui = new GUI();
     carControls = gui.addFolder('Car Position Controls');
     
-    // UPDATED: Store default position based on the image values
+    // Lưu vị trí mặc định dựa trên giá trị từ hình ảnh
     const defaultPosition = {
         x: -0.51869,
         y: 10.56688,
         z: -53.5685
     };
     
-    // Position controls for the container
+    // Position controls cho container (không phải cho car)
     carControls.add(container.position, 'x', defaultPosition.x - 30, defaultPosition.x + 30).name('X Position');
     carControls.add(container.position, 'y', defaultPosition.y - 20, defaultPosition.y + 20).name('Y Position');
     carControls.add(container.position, 'z', defaultPosition.z - 30, defaultPosition.z + 30).name('Z Position');
     
-    // Add rotation controls
+    // Thêm controls cho rotation
     const rotationFolder = carControls.addFolder('Car Rotation');
     
-    // Create rotation controls with degree conversion for easier understanding
+    // Tạo controls với chuyển đổi độ cho dễ hiểu
+    // QUAN TRỌNG: Sử dụng rotation của CONTAINER thay vì car
     const rotationControl = {
-        x: -89.9999,  // Match exact values from the GUI image
+        x: 0,  // Điều chỉnh về 0 vì bây giờ xe đã được đặt đúng trong container
         y: 0,
-        z: -180
+        z: 0
     };
     
-    // Update car rotation when control values change
+    // Cập nhật rotation của CONTAINER khi giá trị điều khiển thay đổi
     const updateRotation = () => {
-        car.rotation.x = THREE.MathUtils.degToRad(rotationControl.x);
-        car.rotation.y = THREE.MathUtils.degToRad(rotationControl.y);
-        car.rotation.z = THREE.MathUtils.degToRad(rotationControl.z);
+        container.rotation.x = THREE.MathUtils.degToRad(rotationControl.x);
+        container.rotation.y = THREE.MathUtils.degToRad(rotationControl.y);
+        container.rotation.z = THREE.MathUtils.degToRad(rotationControl.z);
     };
     
-    // Add controls with degrees (-180 to 180 range)
+    // Thêm controls với độ (-180 đến 180)
     rotationFolder.add(rotationControl, 'x', -180, 180).name('X Rotation (deg)').onChange(updateRotation);
     rotationFolder.add(rotationControl, 'y', -180, 180).name('Y Rotation (deg)').onChange(updateRotation);
     rotationFolder.add(rotationControl, 'z', -180, 180).name('Z Rotation (deg)').onChange(updateRotation);
     
-    // Add auto-rotation controls
+    // Thêm auto-rotation controls
     const autoRotationFolder = carControls.addFolder('Auto Rotation');
     autoRotationFolder.add({ enabled: carRotationEnabled }, 'enabled')
         .name('Enable Auto Rotation')
@@ -540,26 +542,23 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
             carRotationSpeed = value;
         });
     
-    // Add reset button
+    // Thêm nút reset
     carControls.add({
         resetPosition: function() {
-            // Reset container position to default
+            // Reset container position về mặc định
             container.position.x = defaultPosition.x;
             container.position.y = defaultPosition.y;
             container.position.z = defaultPosition.z;
             
-            // Reset container rotation
-            container.rotation.set(0, 0, 0);
+            // Reset container rotation (không phải car rotation)
+            container.rotation.x = 0;
+            container.rotation.y = 0;
+            container.rotation.z = 0;
             
-            // Reset car rotation to default values
-            car.rotation.x = THREE.MathUtils.degToRad(-89.9999);
-            car.rotation.y = THREE.MathUtils.degToRad(0);
-            car.rotation.z = THREE.MathUtils.degToRad(-180);
-            
-            // Update rotation control values
-            rotationControl.x = -89.9999;
+            // Cập nhật giá trị rotation control
+            rotationControl.x = 0;
             rotationControl.y = 0;
-            rotationControl.z = -180;
+            rotationControl.z = 0;
             
             // Force GUI update
             for (const controller of rotationFolder.controllers) {
@@ -568,10 +567,10 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
         }
     }, 'resetPosition').name('Reset Car Position');
     
-    // Add texture controls
+    // Thêm texture controls
     const textureFolder = gui.addFolder('Texture Controls');
     
-    // Add texture selection and custom upload options
+    // Thêm tùy chọn texture và custom upload
     textureFolder.add({ texture: currentTextureName }, 'texture', [
         'Default', 
         'Custom Upload'
@@ -580,11 +579,12 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
             document.getElementById('textureUpload').click();
         } else {
             currentTextureName = value;
-            // Reset to default textures
+            // Reset về texture mặc định
             resetPodiumTextures();
         }
     });
     
+    // Mở tất cả các folder
     textureFolder.open();
     carControls.open();
     rotationFolder.open();
