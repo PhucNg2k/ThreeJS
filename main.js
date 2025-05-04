@@ -1,6 +1,4 @@
 import * as THREE from "three";
-import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
-import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import Stats from "three/addons/libs/stats.module.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls";
@@ -29,7 +27,7 @@ let carAcceleration = 0.2;
 let carDeceleration = 0.1;
 let carTurnSpeed = 0.03;
 let thirdPersonCameraDistance = 200;
-let thirdPersonCameraHeight = 100;
+let thirdPersonCameraHeight = 300;
 let cameraLerpFactor = 0.1;
 let carControls = {
   forward: false,
@@ -54,14 +52,6 @@ async function init() {
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(window.devicePixelRatio);
   const scene = new THREE.Scene();
-  const cubeTexture = new THREE.CubeTextureLoader().setPath("BoxPieces/").load(
-    ["px.bmp", "nx.bmp", "py.bmp", "ny.bmp", "pz.bmp", "nz.bmp"],
-    (texture) => {
-      console.log("Cube Map Loaded Successfully!", texture);
-    },
-    undefined,
-    (error) => console.error("Error Loading Cube Map!", error)
-  );
   scene.background = new THREE.Color(0x4287f5);
   scene.add(new THREE.AxesHelper(1000));
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
@@ -465,8 +455,14 @@ async function init() {
 
   function enterCarDriving(car) {
     isDriving = true;
-    selectedCar = car;
+    selectedCar = car.children[0];
     controls.unlock();
+
+    if (!selectedCar.userData.direction) {
+      selectedCar.userData.velocity = new THREE.Vector3();
+      selectedCar.userData.acceleration = new THREE.Vector3();
+      selectedCar.userData.direction = new THREE.Vector3(0, 0, 1);
+    }
 
     // Reset car controls
     carControls.forward = false;
@@ -475,11 +471,6 @@ async function init() {
     carControls.right = false;
     carControls.brake = false;
     carSpeed = 0;
-
-    selectedCar.quaternion.set(0, 0, 0, 1); // Reset the car's orientation
-    selectedCar.rotation.y = 0; // Preserve only the Y-axis rotation if needed
-    selectedCar.up.set(0, 1, 0); // Align the car's "up" vector with the world's Y-axis
-
     // Create driving GUI
     createDrivingGUI();
 
@@ -539,7 +530,7 @@ async function init() {
 
     const carFolder = drivingGui.addFolder("Car Controls");
     carFolder
-      .add({ "Max Speed": carMaxSpeed }, "Max Speed", 5, 30)
+      .add({ "Max Speed": carMaxSpeed }, "Max Speed", 5, 50)
       .onChange((value) => {
         carMaxSpeed = value;
       });
@@ -615,25 +606,20 @@ async function init() {
     } else if (carControls.backward) {
       carSpeed -= carAcceleration;
     } else {
-      // Natural deceleration
       if (carSpeed > 0) {
         carSpeed -= carDeceleration;
       } else if (carSpeed < 0) {
         carSpeed += carDeceleration;
       }
-
-      // Prevent tiny oscillations
       if (Math.abs(carSpeed) < 0.1) {
         carSpeed = 0;
       }
     }
 
-    // Apply braking
     if (carControls.brake) {
       carSpeed *= 0.9;
     }
 
-    // Clamp speed
     carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
 
     // Apply turning
@@ -646,54 +632,67 @@ async function init() {
       }
     }
 
-    // Update direction vector based on car's rotation
+    // Update direction vector
     const direction = new THREE.Vector3(0, 0, 1);
     direction.applyQuaternion(selectedCar.quaternion);
+    direction.y = 0;
+    direction.normalize();
     selectedCar.userData.direction.copy(direction);
 
-    // Update position based on speed and direction
+    // Debug logs
+    console.log("Car Quaternion:", selectedCar.quaternion.toArray());
+    console.log("Car Rotation (Euler):", {
+      x: selectedCar.rotation.x,
+      y: selectedCar.rotation.y,
+      z: selectedCar.rotation.z,
+    });
+    console.log("Direction Vector:", selectedCar.userData.direction.toArray());
+    console.log("Car Position (Before):", selectedCar.position.toArray());
+    console.log("Car Speed:", carSpeed);
+
+    // Update position
     selectedCar.position.add(
       selectedCar.userData.direction.clone().multiplyScalar(carSpeed)
     );
 
+    // Log position after movement
+    console.log("Car Position (After):", selectedCar.position.toArray());
+
     // Ground constraint
     selectedCar.position.y = 0;
 
-    // Allow some tilt but prevent extreme rotation to avoid flipping
-    // Only constrain if tilting too much
-    const maxTiltAngle = 0.3; // About 17 degrees max tilt
-    if (Math.abs(selectedCar.rotation.x) > maxTiltAngle) {
-      selectedCar.rotation.x = Math.sign(selectedCar.rotation.x) * maxTiltAngle;
-    }
-    if (Math.abs(selectedCar.rotation.z) > maxTiltAngle) {
-      selectedCar.rotation.z = Math.sign(selectedCar.rotation.z) * maxTiltAngle;
+    if (selectedCar.userData.collider) {
+      selectedCar.userData.collider.position.copy(selectedCar.position);
+      selectedCar.userData.collider.rotation.copy(selectedCar.rotation);
     }
   }
   function updateCarFollowCamera(instant = false) {
     if (!selectedCar || !isDriving) return;
 
-    // Calculate ideal camera position
-    const cameraOffset = selectedCar.userData.direction
+    // Get the car's forward direction
+    const carDirection = selectedCar.userData.direction.clone();
+
+    // Calculate camera position: behind the car based on its direction
+    const cameraOffset = carDirection
       .clone()
       .multiplyScalar(-thirdPersonCameraDistance);
-    cameraOffset.y = thirdPersonCameraHeight;
+    cameraOffset.y = thirdPersonCameraHeight; // Add height
 
     const targetPosition = selectedCar.position.clone().add(cameraOffset);
 
     if (instant) {
-      // Instantly set camera position
+      // Immediately position camera (used when first entering the car)
       camera.position.copy(targetPosition);
     } else {
-      // Smoothly transition camera position
+      // Smoothly interpolate camera position
       camera.position.lerp(targetPosition, cameraLerpFactor);
     }
 
-    // Look at the car
-    camera.lookAt(
-      selectedCar.position
-        .clone()
-        .add(new THREE.Vector3(0, thirdPersonCameraHeight * 0.3, 0))
-    );
+    // Make camera look at a point slightly above the car
+    const lookAtPoint = selectedCar.position
+      .clone()
+      .add(new THREE.Vector3(0, thirdPersonCameraHeight * 0.3, 0));
+    camera.lookAt(lookAtPoint);
   }
 
   function handleInteraction(mesh, isMouseClicked) {
@@ -800,6 +799,10 @@ async function init() {
       new THREE.MeshBasicMaterial({ visible: false })
     );
     collider.position.copy(center);
+
+    // Assign the collider to the mesh's userData
+    mesh.userData.collider = collider;
+
     return collider;
   }
 
@@ -912,6 +915,7 @@ async function init() {
   function animate() {
     requestAnimationFrame(animate);
     updateCamera();
+    UpdateBoxHelper(RayCastObjects);
     render();
   }
 
@@ -944,25 +948,10 @@ function UpdateBoxHelper(raycastObjects) {
     if (obj.userData.helper) {
       obj.userData.helper.update();
     }
-  });
-}
-
-function loadOBJModel(objPath, base_path) {
-  const onProgress = function (xhr) {
-    if (xhr.lengthComputable) {
-      const percentComplete = (xhr.loaded / xhr.total) * 100;
+    if (obj.userData.collider) {
+      obj.userData.collider.position.copy(obj.position);
+      obj.userData.collider.rotation.copy(obj.rotation);
     }
-  };
-
-  return new Promise((resolve, reject) => {
-    new OBJLoader().setPath(base_path).load(
-      objPath,
-      (obj) => {
-        resolve(obj);
-      },
-      onProgress,
-      reject
-    );
   });
 }
 
@@ -983,46 +972,6 @@ function loadFBXModel(fbxPath) {
       reject
     );
   });
-}
-
-function loadOBJ_MTLModel(objPath, mtlPath, base_path) {
-  const onProgress = function (xhr) {
-    if (xhr.lengthComputable) {
-      const percentComplete = (xhr.loaded / xhr.total) * 100;
-    }
-  };
-
-  return new Promise((resolve, reject) => {
-    new MTLLoader().setPath(base_path).load(mtlPath, (materials) => {
-      materials.preload();
-      new OBJLoader()
-        .setMaterials(materials)
-        .setPath(base_path)
-        .load(
-          objPath,
-          (obj) => {
-            resolve(obj);
-          },
-          onProgress,
-          reject
-        );
-    });
-  });
-}
-
-function checkCollision(groupA, groupB) {
-  let bboxA = new THREE.Box3.setFromObject(groupA);
-  let bboxB = new THREE.Box3.setFromObject(groupB);
-  return bboxA.intersectBox(bboxB);
-}
-
-function getBox(w, h, d) {
-  let geometry = new THREE.BoxGeometry(w, h, d);
-  let material = new THREE.MeshBasicMaterial({
-    color: 0x00ff00,
-  });
-  let mesh = new THREE.Mesh(geometry, material);
-  return mesh;
 }
 
 function getPlane(size) {
