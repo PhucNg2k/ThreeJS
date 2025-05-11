@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import Stats from "three/addons/libs/stats.module.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -13,13 +15,11 @@ const clock = new THREE.Clock();
 const pointer = new THREE.Vector2();
 let INTERSECTED = null;
 let composer, outlinePass;
-const globalScaleValue = 0.5;
 let SceneObject = {};
 
 // Car driving variables
 let cars = [];
 let selectedCar = null;
-let isCarSelected = false;
 let isDriving = false;
 let carSpeed = 0;
 let carMaxSpeed = 15;
@@ -169,13 +169,92 @@ async function init() {
   controls.addEventListener("unlock", (event) => {
     resetKeys();
   });
-
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
   // Load cars and add them to our cars array for tracking
-  const carObj1 = await loadFBXModel("Car/Car.fbx");
-  const carObj2 = await loadFBXModel("Car/Car.fbx");
+  const carObj1 = await loadGLTFModel("mclaren/draco/chassis.gltf");
+  const carObj2 = await loadGLTFModel("mclaren/draco/chassis.gltf");
+
+  // Load wheels for each car
+  const wheelFrontLeft1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+  const wheelFrontRight1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+  const wheelBackLeft1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+  const wheelBackRight1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+
+  const wheelFrontLeft2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+  const wheelFrontRight2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+  const wheelBackLeft2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+  const wheelBackRight2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
+  // Scale wheels appropriately - reduced wheel scale to match chassis
+  const wheelScale = 1; // Reduced from 20 to make wheels proportional to chassis
+  const wheels1 = [
+    wheelFrontLeft1,
+    wheelFrontRight1,
+    wheelBackLeft1,
+    wheelBackRight1,
+  ];
+  const wheels2 = [
+    wheelFrontLeft2,
+    wheelFrontRight2,
+    wheelBackLeft2,
+    wheelBackRight2,
+  ];
+
+  wheels1.forEach((wheel) => {
+    wheel.scale.set(wheelScale, wheelScale, wheelScale);
+    wheel.castShadow = true;
+    carObj1.add(wheel);
+  });
+
+  wheels2.forEach((wheel) => {
+    wheel.scale.set(wheelScale, wheelScale, wheelScale);
+    wheel.castShadow = true;
+    carObj2.add(wheel);
+  }); // Position wheels for Car 1 - positions adjusted for larger chassis scale and raised to prevent clipping with ground
+  wheelFrontLeft1.position.set(
+    0.78 * wheelScale,
+    0.3 * wheelScale,
+    1.25 * wheelScale
+  );
+  wheelFrontRight1.position.set(
+    -0.78 * wheelScale,
+    0.3 * wheelScale,
+    1.25 * wheelScale
+  );
+  wheelBackLeft1.position.set(
+    0.75 * wheelScale,
+    0.3 * wheelScale,
+    -1.32 * wheelScale
+  );
+  wheelBackRight1.position.set(
+    -0.75 * wheelScale,
+    0.3 * wheelScale,
+    -1.32 * wheelScale
+  ); // Position wheels for Car 2
+  wheelFrontLeft2.position.set(
+    0.78 * wheelScale,
+    0.3 * wheelScale,
+    1.25 * wheelScale
+  );
+  wheelFrontRight2.position.set(
+    -0.78 * wheelScale,
+    0.3 * wheelScale,
+    1.25 * wheelScale
+  );
+  wheelBackLeft2.position.set(
+    0.75 * wheelScale,
+    0.3 * wheelScale,
+    -1.32 * wheelScale
+  );
+  wheelBackRight2.position.set(
+    -0.75 * wheelScale,
+    0.3 * wheelScale,
+    -1.32 * wheelScale
+  );
+
+  // Keep track of wheels in the car objects for rotation during driving
+  carObj1.userData.wheels = wheels1;
+  carObj2.userData.wheels = wheels2;
 
   // Setup car physics properties
   carObj1.name = "Car1";
@@ -187,14 +266,23 @@ async function init() {
   carObj2.userData.velocity = new THREE.Vector3();
   carObj2.userData.acceleration = new THREE.Vector3();
   carObj2.userData.direction = new THREE.Vector3(0, 0, 1);
+  // Scale the McLaren models appropriately - significantly increased to make chassis larger relative to wheels
+  carObj1.scale.set(150, 150, 150);
+  carObj2.scale.set(150, 150, 150);
 
+  // Get car size after scaling
   let carSize = new THREE.Box3().setFromObject(carObj1);
   let carWidth = carSize.max.x - carSize.min.x;
   let carHeight = carSize.max.y - carSize.min.y;
   let carDepth = carSize.max.z - carSize.min.z;
 
+  // Position cars
   carObj1.position.set(0, 0, 0);
   carObj2.position.set(carWidth + 500, 0, 0);
+
+  // Rotate cars to face forward (adjust as needed for the McLaren model)
+  carObj1.rotation.y = Math.PI;
+  carObj2.rotation.y = Math.PI;
 
   carObj1.traverse((child) => {
     if (child.isMesh) {
@@ -300,6 +388,8 @@ async function init() {
   tmpplane.position.y = -5.0;
   tmpplane.rotation.x = -Math.PI / 2;
   scene.add(plane);
+  carObj1.position.y = 5; // Raise car slightly above ground level
+  carObj2.position.y = 5; // Raise car slightly above ground level
 
   camera.position.x = 300;
   camera.position.y = carHeight - 50;
@@ -452,12 +542,13 @@ async function init() {
       updateCameraPoint();
     }
   }
-
   function enterCarDriving(car) {
     isDriving = true;
-    selectedCar = car.children[0];
+    // For GLTF models, the main model might be the parent itself
+    selectedCar = car;
     controls.unlock();
 
+    // Ensure the car has proper physics properties
     if (!selectedCar.userData.direction) {
       selectedCar.userData.velocity = new THREE.Vector3();
       selectedCar.userData.acceleration = new THREE.Vector3();
@@ -471,13 +562,23 @@ async function init() {
     carControls.right = false;
     carControls.brake = false;
     carSpeed = 0;
+
     // Create driving GUI
     createDrivingGUI();
 
     // Setup initial camera position behind the car
     updateCarFollowCamera(true);
 
+    // Hide the outline when driving
+    removeOutline();
+
     console.log(`Now driving: ${selectedCar.name}`);
+
+    // Show driving instructions
+    const drivingInstructions = document.getElementById("drivingInstructions");
+    if (drivingInstructions) {
+      drivingInstructions.style.display = "block";
+    }
   }
   function exitCarDriving() {
     isDriving = false;
@@ -493,6 +594,7 @@ async function init() {
     camera.position.copy(behindCar);
     camera.lookAt(selectedCar.position);
 
+    // Clear the selected car
     selectedCar = null;
 
     // Remove driving GUI
@@ -500,14 +602,19 @@ async function init() {
 
     console.log("Exited driving mode");
 
-    // Return to normal controls
+    // Hide driving instructions
+    const drivingInstructions = document.getElementById("drivingInstructions");
+    if (drivingInstructions) {
+      drivingInstructions.style.display = "none";
+    }
+
+    // Return to normal controls after a short delay
     setTimeout(() => {
       controls.lock();
     }, 100);
   }
 
   let drivingGui = null;
-
   function createDrivingGUI() {
     if (drivingGui) {
       drivingGui.destroy?.();
@@ -526,9 +633,12 @@ async function init() {
     drivingGui.domElement.style.top = "10px";
     guiContainer.appendChild(drivingGui.domElement);
 
+    // Add car name to GUI title
+    drivingGui.title(`Driving McLaren ${selectedCar.name}`);
+
     drivingGui.add({ "Exit Car": exitCarDriving }, "Exit Car");
 
-    const carFolder = drivingGui.addFolder("Car Controls");
+    const carFolder = drivingGui.addFolder("Performance Settings");
     carFolder
       .add({ "Max Speed": carMaxSpeed }, "Max Speed", 5, 50)
       .onChange((value) => {
@@ -544,6 +654,11 @@ async function init() {
       .onChange((value) => {
         carTurnSpeed = value;
       });
+    carFolder
+      .add({ "Braking Power": carDeceleration }, "Braking Power", 0.05, 0.5)
+      .onChange((value) => {
+        carDeceleration = value;
+      });
 
     const cameraFolder = drivingGui.addFolder("Camera Settings");
     cameraFolder
@@ -557,25 +672,33 @@ async function init() {
         thirdPersonCameraHeight = value;
       });
     cameraFolder
-      .add({ Smoothing: cameraLerpFactor }, "Smoothing", 0.01, 1)
+      .add({ Smoothness: cameraLerpFactor }, "Smoothness", 0.01, 1)
       .onChange((value) => {
         cameraLerpFactor = value;
       });
 
-    const instructions = document.createElement("div");
+    // Create or update driving instructions
+    let instructions = document.getElementById("drivingInstructions");
+    if (!instructions) {
+      instructions = document.createElement("div");
+      instructions.id = "drivingInstructions";
+      document.body.appendChild(instructions);
+    }
+
     instructions.innerHTML = `
-      <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.5); color: white; padding: 10px; border-radius: 5px;">
-        <h3>Driving Controls:</h3>
-        <p>W/↑ - Accelerate</p>
-        <p>S/↓ - Reverse</p>
-        <p>A/← - Turn Left</p>
-        <p>D/→ - Turn Right</p>
-        <p>Space - Brake</p>
-        <p>P/Esc - Exit Car</p>
+      <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 15px; border-radius: 5px; font-family: Arial, sans-serif;">
+        <h3 style="margin-top: 0; margin-bottom: 10px;">McLaren Controls:</h3>
+        <div style="display: grid; grid-template-columns: auto auto; gap: 8px; align-items: center;">
+          <div><strong>W/↑</strong></div><div>Accelerate</div>
+          <div><strong>S/↓</strong></div><div>Reverse</div>
+          <div><strong>A/←</strong></div><div>Turn Left</div>
+          <div><strong>D/→</strong></div><div>Turn Right</div>
+          <div><strong>Space</strong></div><div>Brake</div>
+          <div><strong>P/Esc</strong></div><div>Exit Vehicle</div>
+        </div>
       </div>
     `;
-    document.body.appendChild(instructions);
-    instructions.id = "drivingInstructions";
+    instructions.style.display = "block";
 
     carFolder.open();
     cameraFolder.open();
@@ -600,7 +723,7 @@ async function init() {
   function updateCarDriving() {
     if (!selectedCar || !isDriving) return;
 
-    // Apply acceleration
+    // Apply acceleration with smoother handling
     if (carControls.forward) {
       carSpeed += carAcceleration;
     } else if (carControls.backward) {
@@ -616,83 +739,151 @@ async function init() {
       }
     }
 
+    // Apply braking
     if (carControls.brake) {
       carSpeed *= 0.9;
     }
 
+    // Limit speed
     carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
 
-    // Apply turning
-    if (carSpeed !== 0) {
+    // Calculate turn speed based on car speed
+    // Slower rotation at high speeds for stability, faster rotation at lower speeds for maneuverability
+    const adaptiveTurnSpeed =
+      carTurnSpeed * (1 - (Math.abs(carSpeed) / carMaxSpeed) * 0.5);
+
+    // Apply turning (only when car is moving)
+    if (Math.abs(carSpeed) > 0.1) {
+      // Apply smoother turning with easing
       if (carControls.left) {
-        selectedCar.rotation.y += carTurnSpeed * Math.sign(carSpeed);
+        selectedCar.rotation.y += adaptiveTurnSpeed * Math.sign(carSpeed);
       }
       if (carControls.right) {
-        selectedCar.rotation.y -= carTurnSpeed * Math.sign(carSpeed);
+        selectedCar.rotation.y -= adaptiveTurnSpeed * Math.sign(carSpeed);
       }
     }
 
-    // Update direction vector
+    // Update direction vector based on car's rotation
     const direction = new THREE.Vector3(0, 0, 1);
     direction.applyQuaternion(selectedCar.quaternion);
-    direction.y = 0;
+    direction.y = 0; // Keep car on the ground
     direction.normalize();
     selectedCar.userData.direction.copy(direction);
 
-    // Debug logs
-    console.log("Car Quaternion:", selectedCar.quaternion.toArray());
-    console.log("Car Rotation (Euler):", {
-      x: selectedCar.rotation.x,
-      y: selectedCar.rotation.y,
-      z: selectedCar.rotation.z,
-    });
-    console.log("Direction Vector:", selectedCar.userData.direction.toArray());
-    console.log("Car Position (Before):", selectedCar.position.toArray());
-    console.log("Car Speed:", carSpeed);
+    // Update car position based on direction and speed
+    const moveVector = selectedCar.userData.direction
+      .clone()
+      .multiplyScalar(carSpeed);
+    selectedCar.position.add(moveVector); // Apply ground constraint - keep car slightly above ground to prevent wheel clipping
+    selectedCar.position.y = 5;
 
-    // Update position
-    selectedCar.position.add(
-      selectedCar.userData.direction.clone().multiplyScalar(carSpeed)
-    );
-
-    // Log position after movement
-    console.log("Car Position (After):", selectedCar.position.toArray());
-
-    // Ground constraint
-    selectedCar.position.y = 0;
-
+    // Update car's collider if it exists
     if (selectedCar.userData.collider) {
       selectedCar.userData.collider.position.copy(selectedCar.position);
       selectedCar.userData.collider.rotation.copy(selectedCar.rotation);
     }
-  }
+
+    // If the car is moving slowly, apply some damping to eventually stop it
+    if (
+      Math.abs(carSpeed) < 1 &&
+      !carControls.forward &&
+      !carControls.backward
+    ) {
+      carSpeed = 0;
+    }
+
+    // Simulate wheel rotation based on speed
+    if (selectedCar.userData.wheels) {
+      selectedCar.userData.wheels.forEach((wheel) => {
+        wheel.rotation.x += carSpeed * 0.01;
+      });
+    }
+  } // Store previous camera data for smooth transitions
+  let prevCameraTarget = new THREE.Vector3();
+  let prevLookAtPoint = new THREE.Vector3();
+  let targetCameraRotationZ = 0;
+
   function updateCarFollowCamera(instant = false) {
     if (!selectedCar || !isDriving) return;
 
-    // Get the car's forward direction
+    // Create a dampened direction that's more stable during sharp turns
     const carDirection = selectedCar.userData.direction.clone();
 
-    // Calculate camera position: behind the car based on its direction
+    // Create a smoother camera path by calculating a target behind the car
+    // that considers both position and orientation
     const cameraOffset = carDirection
       .clone()
       .multiplyScalar(-thirdPersonCameraDistance);
-    cameraOffset.y = thirdPersonCameraHeight; // Add height
+    cameraOffset.y = thirdPersonCameraHeight;
 
     const targetPosition = selectedCar.position.clone().add(cameraOffset);
 
-    if (instant) {
-      // Immediately position camera (used when first entering the car)
+    // Initialize previous positions if this is the first update
+    if (instant || prevCameraTarget.lengthSq() === 0) {
       camera.position.copy(targetPosition);
+      prevCameraTarget.copy(targetPosition);
+      prevLookAtPoint.copy(selectedCar.position);
     } else {
-      // Smoothly interpolate camera position
-      camera.position.lerp(targetPosition, cameraLerpFactor);
+      // Use variable smoothing based on speed to prevent jerkiness
+      // Slower speeds = more responsive camera
+      // Higher speeds = more stable camera
+      const speedFactor = Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
+      const dynamicLerpFactor = THREE.MathUtils.lerp(
+        cameraLerpFactor * 1.5,
+        cameraLerpFactor * 0.5,
+        speedFactor
+      );
+
+      // Use exponential smoothing to follow the car
+      prevCameraTarget.lerp(targetPosition, dynamicLerpFactor);
+      camera.position.copy(prevCameraTarget);
     }
 
-    // Make camera look at a point slightly above the car
-    const lookAtPoint = selectedCar.position
+    // Calculate a smooth turning offset that gradually changes
+    // This prevents camera jerks when turning starts/stops
+    let turnInfluence = 0;
+    if (carControls.left) {
+      turnInfluence = (Math.abs(carSpeed) / carMaxSpeed) * 20;
+    } else if (carControls.right) {
+      turnInfluence = (-Math.abs(carSpeed) / carMaxSpeed) * 20;
+    }
+
+    // Create a look-at point that smoothly tracks in front of the car
+    const lookAtTarget = selectedCar.position
       .clone()
-      .add(new THREE.Vector3(0, thirdPersonCameraHeight * 0.3, 0));
-    camera.lookAt(lookAtPoint);
+      .add(new THREE.Vector3(turnInfluence, thirdPersonCameraHeight * 0.25, 0));
+
+    // Smooth the look-at point transition
+    if (instant || prevLookAtPoint.lengthSq() === 0) {
+      prevLookAtPoint.copy(lookAtTarget);
+    } else {
+      // Use slightly faster lerp for look-at to keep focus on car
+      prevLookAtPoint.lerp(lookAtTarget, cameraLerpFactor * 1.5);
+    }
+
+    camera.lookAt(prevLookAtPoint);
+
+    // Apply a smooth camera tilt during turns with proper damping
+    if (Math.abs(carSpeed) > 3) {
+      if (carControls.left) {
+        targetCameraRotationZ =
+          0.03 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
+      } else if (carControls.right) {
+        targetCameraRotationZ =
+          -0.03 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
+      } else {
+        targetCameraRotationZ = 0;
+      }
+    } else {
+      targetCameraRotationZ = 0;
+    }
+
+    // Apply smooth tilt transition
+    camera.rotation.z = THREE.MathUtils.lerp(
+      camera.rotation.z,
+      targetCameraRotationZ,
+      0.03
+    );
   }
 
   function handleInteraction(mesh, isMouseClicked) {
@@ -823,22 +1014,31 @@ async function init() {
     composer.addPass(renderPass);
     composer.addPass(outlinePass);
   }
-
   function mergeGroupIntoSingleMesh(group) {
-    let geometries = [];
-    let material = null;
-    group.traverse((child) => {
-      if (child.isMesh) {
-        const clonedGeometry = child.geometry.clone();
-        clonedGeometry.applyMatrix4(child.matrixWorld);
-        geometries.push(clonedGeometry);
-        if (!material) material = child.material;
-      }
-    });
-    if (geometries.length === 0) return null;
-    const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
-    const mergedMesh = new THREE.Mesh(mergedGeometry, material);
-    return mergedMesh;
+    // Skip the merge process entirely and use a simplified box collider approach
+    // This avoids issues with incompatible geometry attributes and morphAttributes
+    const box = new THREE.Box3().setFromObject(group);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const collider = new THREE.Mesh(
+      boxGeo,
+      new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        wireframe: true,
+        visible: false,
+      })
+    );
+    collider.position.copy(center);
+
+    // Add userData to help with debugging
+    collider.userData.isCollider = true;
+    collider.userData.originalObject = group;
+
+    return collider;
   }
 
   function applyOutlineToMesh(mesh) {
@@ -970,6 +1170,42 @@ function loadFBXModel(fbxPath) {
       },
       onProgress,
       reject
+    );
+  });
+}
+
+function loadGLTFModel(gltfPath) {
+  const onProgress = function (xhr) {
+    if (xhr.lengthComputable) {
+      const percentComplete = (xhr.loaded / xhr.total) * 100;
+      console.log(`Loading model: ${percentComplete.toFixed(2)}%`);
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    // Setup DRACO decoder
+    const dracoLoader = new DRACOLoader();
+    // Use a more standard path to the draco decoder
+    dracoLoader.setDecoderPath(
+      "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
+    );
+    dracoLoader.setDecoderConfig({ type: "js" });
+
+    // Setup GLTF loader
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.setDRACOLoader(dracoLoader);
+
+    gltfLoader.load(
+      gltfPath,
+      (gltf) => {
+        const model = gltf.scene;
+        resolve(model);
+      },
+      onProgress,
+      (error) => {
+        console.error(`Error loading model ${gltfPath}:`, error);
+        reject(error);
+      }
     );
   });
 }
