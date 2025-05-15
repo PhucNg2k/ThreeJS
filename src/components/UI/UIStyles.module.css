@@ -1,0 +1,160 @@
+/* src/components/UI/UIStyles.module.css */
+
+/* Styles for StartPanel */
+.startPanel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    /* Slightly darker for better text contrast */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    text-align: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    /* Common system font stack */
+    z-index: 2000;
+    /* Ensure it's on top */
+    cursor: default;
+    /* Default cursor for the panel itself */
+}
+
+.startPanel h1 {
+    font-size: 3em;
+    /* Slightly larger */
+    margin-bottom: 25px;
+    font-weight: 300;
+    /* Lighter font weight for a modern look */
+    letter-spacing: 1px;
+}
+
+.startPanel p {
+    font-size: 1.3em;
+    margin-bottom: 40px;
+    font-weight: 300;
+}
+
+.startButton {
+    padding: 12px 35px;
+    /* Adjusted padding */
+    font-size: 1.1em;
+    /* Adjusted font size */
+    font-weight: 500;
+    color: white;
+    background-color: #007bff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.startButton:hover {
+    background-color: #0056b3;
+}
+
+.startButton:active {
+    transform: scale(0.98);
+    /* Slight press effect */
+}
+
+
+/* Styles for ObjectInfoPanel (if you put them here) */
+.objectInfoPanel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    background-color: rgba(40, 40, 40, 0.9);
+    color: white;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    font-family: sans-serif;
+    font-size: 14px;
+}
+
+.panelHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #555;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.panelHeader h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.closeButton {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 5px;
+}
+
+.panelContent fieldset {
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.panelContent legend {
+    padding: 0 5px;
+    font-weight: bold;
+    color: #aaa;
+}
+
+.panelContent label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.panelContent input[type="number"] {
+    width: calc(100% - 30px);
+    /* Adjust based on label width if inline */
+    margin-left: 5px;
+    background-color: #333;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 3px;
+    padding: 5px;
+    box-sizing: border-box;
+}
+
+/* Styles for ControlHints */
+.controlHintsContainer {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background-color: rgba(0, 0, 0, 0.6);
+    /* Slightly more opaque */
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-family: sans-serif;
+    font-size: 12px;
+    z-index: 1000;
+    /* Ensure it's above the canvas */
+}
+
+.controlHintsContainer ul {
+    list-style: none;
+    padding: 0;
+    margin: 5px 0 0 0;
+}
+
+.controlHintsContainer li {
+    margin-bottom: 3px;
+}
