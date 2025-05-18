@@ -1,13 +1,11 @@
 import * as THREE from "three";
 import Stats from "three/addons/libs/stats.module.js";
-import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { OutlinePass } from "three/addons/postprocessing/OutlinePass.js";
-import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import GUI from "lil-gui";
 RectAreaLightUniformsLib.init();
@@ -26,8 +24,8 @@ let carMaxSpeed = 15;
 let carAcceleration = 0.2;
 let carDeceleration = 0.1;
 let carTurnSpeed = 0.03;
-let thirdPersonCameraDistance = 200;
-let thirdPersonCameraHeight = 300;
+let thirdPersonCameraDistance = 300;
+let thirdPersonCameraHeight = 350;
 let cameraLerpFactor = 0.1;
 let carControls = {
   forward: false,
@@ -173,18 +171,28 @@ async function init() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // Load cars and add them to our cars array for tracking
   const carObj1 = await loadGLTFModel("mclaren/draco/chassis.gltf");
-  const carObj2 = await loadGLTFModel("mclaren/draco/chassis.gltf");
+
+  // Load Aspark Owl car model
+  const asparkCar = await loadGLTFModel(
+    "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf"
+  );
+  asparkCar.name = "AsparkOwl";
+
+  const bugattiCar = await loadGLTFModel(
+    "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf"
+  );
+  bugattiCar.name = "BugattiBolide";
+
+  const ferrariCar = await loadGLTFModel(
+    "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf"
+  );
+  ferrariCar.name = "FerrariMonzaSP1";
 
   // Load wheels for each car
   const wheelFrontLeft1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
   const wheelFrontRight1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
   const wheelBackLeft1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
   const wheelBackRight1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-
-  const wheelFrontLeft2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-  const wheelFrontRight2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-  const wheelBackLeft2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-  const wheelBackRight2 = await loadGLTFModel("mclaren/draco/wheel.gltf");
   // Scale wheels appropriately - reduced wheel scale to match chassis
   const wheelScale = 1; // Reduced from 20 to make wheels proportional to chassis
   const wheels1 = [
@@ -193,12 +201,6 @@ async function init() {
     wheelBackLeft1,
     wheelBackRight1,
   ];
-  const wheels2 = [
-    wheelFrontLeft2,
-    wheelFrontRight2,
-    wheelBackLeft2,
-    wheelBackRight2,
-  ];
 
   wheels1.forEach((wheel) => {
     wheel.scale.set(wheelScale, wheelScale, wheelScale);
@@ -206,11 +208,6 @@ async function init() {
     carObj1.add(wheel);
   });
 
-  wheels2.forEach((wheel) => {
-    wheel.scale.set(wheelScale, wheelScale, wheelScale);
-    wheel.castShadow = true;
-    carObj2.add(wheel);
-  }); // Position wheels for Car 1 - positions adjusted for larger chassis scale and raised to prevent clipping with ground
   wheelFrontLeft1.position.set(
     0.78 * wheelScale,
     0.3 * wheelScale,
@@ -231,58 +228,52 @@ async function init() {
     0.3 * wheelScale,
     -1.32 * wheelScale
   ); // Position wheels for Car 2
-  wheelFrontLeft2.position.set(
-    0.78 * wheelScale,
-    0.3 * wheelScale,
-    1.25 * wheelScale
-  );
-  wheelFrontRight2.position.set(
-    -0.78 * wheelScale,
-    0.3 * wheelScale,
-    1.25 * wheelScale
-  );
-  wheelBackLeft2.position.set(
-    0.75 * wheelScale,
-    0.3 * wheelScale,
-    -1.32 * wheelScale
-  );
-  wheelBackRight2.position.set(
-    -0.75 * wheelScale,
-    0.3 * wheelScale,
-    -1.32 * wheelScale
-  );
 
   // Keep track of wheels in the car objects for rotation during driving
   carObj1.userData.wheels = wheels1;
-  carObj2.userData.wheels = wheels2;
 
   // Setup car physics properties
-  carObj1.name = "Car1";
+  carObj1.name = "MclarenDraco";
   carObj1.userData.velocity = new THREE.Vector3();
   carObj1.userData.acceleration = new THREE.Vector3();
   carObj1.userData.direction = new THREE.Vector3(0, 0, 1);
 
-  carObj2.name = "Car2";
-  carObj2.userData.velocity = new THREE.Vector3();
-  carObj2.userData.acceleration = new THREE.Vector3();
-  carObj2.userData.direction = new THREE.Vector3(0, 0, 1);
+  // Setup Aspark Owl physics properties
+  asparkCar.userData.velocity = new THREE.Vector3();
+  asparkCar.userData.acceleration = new THREE.Vector3();
+  asparkCar.userData.direction = new THREE.Vector3(0, 0, 1);
+
+  bugattiCar.userData.velocity = new THREE.Vector3();
+  bugattiCar.userData.acceleration = new THREE.Vector3();
+  bugattiCar.userData.direction = new THREE.Vector3(0, 0, 1);
+
+  ferrariCar.userData.velocity = new THREE.Vector3();
+  ferrariCar.userData.acceleration = new THREE.Vector3();
+  ferrariCar.userData.direction = new THREE.Vector3(0, 0, 1);
+
   // Scale the McLaren models appropriately - significantly increased to make chassis larger relative to wheels
   carObj1.scale.set(150, 150, 150);
-  carObj2.scale.set(150, 150, 150);
+  // Scale the Aspark model to match the size of the other cars
+  asparkCar.scale.set(150, 150, 150);
+  bugattiCar.scale.set(150, 150, 150);
+  ferrariCar.scale.set(14000, 14000, 14000);
 
   // Get car size after scaling
   let carSize = new THREE.Box3().setFromObject(carObj1);
   let carWidth = carSize.max.x - carSize.min.x;
   let carHeight = carSize.max.y - carSize.min.y;
-  let carDepth = carSize.max.z - carSize.min.z;
 
   // Position cars
   carObj1.position.set(0, 0, 0);
-  carObj2.position.set(carWidth + 500, 0, 0);
+  asparkCar.position.set(carWidth + 500, 0, 0);
+  bugattiCar.position.set(-(carWidth + 500), 0, 0);
+  ferrariCar.position.set(-(carWidth + 1000), 0, 0);
 
   // Rotate cars to face forward (adjust as needed for the McLaren model)
   carObj1.rotation.y = Math.PI;
-  carObj2.rotation.y = Math.PI;
+  asparkCar.rotation.y = Math.PI; // Adjust as needed for the Aspark model
+  bugattiCar.rotation.y = Math.PI;
+  ferrariCar.rotation.y = Math.PI;
 
   carObj1.traverse((child) => {
     if (child.isMesh) {
@@ -291,7 +282,21 @@ async function init() {
     }
   });
 
-  carObj2.traverse((child) => {
+  asparkCar.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = false;
+    }
+  });
+
+  bugattiCar.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = false;
+    }
+  });
+
+  ferrariCar.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = false;
@@ -299,58 +304,36 @@ async function init() {
   });
 
   scene.add(carObj1);
-  scene.add(carObj2);
+  scene.add(asparkCar); // Add the Aspark car to the scene
+  scene.add(bugattiCar); // Add the Bugatti car to the scene
+  scene.add(ferrariCar); // Add the Ferrari car to the scene
 
   // Add cars to array for tracking and selection
   cars.push(carObj1);
-  cars.push(carObj2);
+  cars.push(asparkCar); // Add the Aspark car to the cars array
+  cars.push(bugattiCar); // Add the Bugatti car to the cars array
+  cars.push(ferrariCar); // Add the Ferrari car to the cars array
 
-  const garage = await loadFBXModel("Garage/Garage.fbx");
-  garage.name = "Garage";
-  garage.position.y = -50;
-  garage.scale.set(0.4, 0.2, 0.4);
-  garage.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-    }
-  });
-  scene.add(garage);
-
-  let garageSize = new THREE.Box3().setFromObject(garage);
-  let garageWidth = garageSize.max.x - garageSize.min.x;
-  let garageHeight = garageSize.max.y - garageSize.min.y;
-  let garageDepth = garageSize.max.z - garageSize.min.z;
-
-  const numLights = 1;
-  for (let i = 0; i < numLights; i++) {
-    const spotLight = new THREE.SpotLight(0xffff00, 10000);
-    const spacing = garageWidth / (numLights + 1) + 500;
-    const x = garageSize.min.x + spacing * (i + 1);
-    const y = garageSize.max.y - 300;
-    const z = (garageSize.min.z + garageSize.max.z) / 2 - 1200;
-    spotLight.position.set(x, y, z);
-    spotLight.angle = Math.PI / 6;
-    spotLight.penumbra = 0.3;
-    spotLight.decay = 2;
-    spotLight.distance = garageHeight * 2;
-    spotLight.castShadow = true;
-    spotLight.shadow.mapSize.width = 1024;
-    spotLight.shadow.mapSize.height = 1024;
-    spotLight.shadow.camera.near = 10;
-    spotLight.shadow.camera.far = spotLight.distance;
-    spotLight.shadow.camera.left = -1000;
-    spotLight.shadow.camera.right = 1000;
-    spotLight.shadow.camera.top = 1000;
-    spotLight.shadow.camera.bottom = -1000;
-    spotLight.target.position.set(200, 300, 0);
-    spotLight.shadow.camera.updateProjectionMatrix();
-    scene.add(spotLight);
-    scene.add(spotLight.target);
-
-    let spotLightHelper = new THREE.SpotLightHelper(spotLight);
-    const shadowHelper = new THREE.CameraHelper(spotLight.shadow.camera);
-  }
+  // Add a spotlight for general illumination
+  const spotLight = new THREE.SpotLight(0xffff00, 10000);
+  spotLight.position.set(500, 800, -1200);
+  spotLight.angle = Math.PI / 6;
+  spotLight.penumbra = 0.3;
+  spotLight.decay = 2;
+  spotLight.distance = 3000;
+  spotLight.castShadow = true;
+  spotLight.shadow.mapSize.width = 1024;
+  spotLight.shadow.mapSize.height = 1024;
+  spotLight.shadow.camera.near = 10;
+  spotLight.shadow.camera.far = spotLight.distance;
+  spotLight.shadow.camera.left = -1000;
+  spotLight.shadow.camera.right = 1000;
+  spotLight.shadow.camera.top = 1000;
+  spotLight.shadow.camera.bottom = -1000;
+  spotLight.target.position.set(200, 300, 0);
+  spotLight.shadow.camera.updateProjectionMatrix();
+  scene.add(spotLight);
+  scene.add(spotLight.target);
 
   const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
   directionalLight.position.set(500, 766, -1200);
@@ -366,8 +349,8 @@ async function init() {
   scene.add(directionalLight);
   const helper = new THREE.DirectionalLightHelper(directionalLight, 5);
   scene.add(helper);
-
-  const planeGeometry = new THREE.PlaneGeometry(5000, 5000);
+  // Create a much larger ground plane for infinite-like appearance
+  const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
   const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
   planeMaterial.receiveShadow = true;
   const plane = new THREE.Mesh(planeGeometry, planeMaterial);
@@ -375,21 +358,17 @@ async function init() {
   plane.rotation.x = -Math.PI / 2;
   plane.receiveShadow = true;
 
-  const uvAttribute = plane.geometry.attributes.uv;
-  for (let i = 0; i < uvAttribute.count; i++) {
-    uvAttribute.setX(i, uvAttribute.getX(i) * 10);
-    uvAttribute.setY(i, uvAttribute.getY(i) * 10);
-  }
-  uvAttribute.needsUpdate = true;
+  // Set texture to repeat many times for a tiled effect
+  groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+  groundTexture.repeat.set(100, 100); // Significantly increase repeat
+  groundTexture.anisotropy = 16; // Better texture quality at angles
+  groundTexture.needsUpdate = true;
 
-  let tmpplane = getPlane(5000);
-  tmpplane.receiveShadow = true;
-  tmpplane.material.needsUpdate = true;
-  tmpplane.position.y = -5.0;
-  tmpplane.rotation.x = -Math.PI / 2;
   scene.add(plane);
-  carObj1.position.y = 5; // Raise car slightly above ground level
-  carObj2.position.y = 5; // Raise car slightly above ground level
+  carObj1.position.y = 10; // Raise car slightly above ground level
+  asparkCar.position.y = 5; // Raise Aspark car slightly above ground level
+  bugattiCar.position.y = 5; // Raise Bugatti car slightly above ground level
+  ferrariCar.position.y = 5; // Raise Ferrari car slightly above ground level
 
   camera.position.x = 300;
   camera.position.y = carHeight - 50;
@@ -802,6 +781,7 @@ async function init() {
   let prevCameraTarget = new THREE.Vector3();
   let prevLookAtPoint = new THREE.Vector3();
   let targetCameraRotationZ = 0;
+  let currentTurnInfluence = 0; // Track current turn influence for smoother transitions
 
   function updateCarFollowCamera(instant = false) {
     if (!selectedCar || !isDriving) return;
@@ -828,9 +808,11 @@ async function init() {
       // Slower speeds = more responsive camera
       // Higher speeds = more stable camera
       const speedFactor = Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
+
+      // More aggressive smoothing to reduce shake - reduce the max value
       const dynamicLerpFactor = THREE.MathUtils.lerp(
-        cameraLerpFactor * 1.5,
-        cameraLerpFactor * 0.5,
+        cameraLerpFactor * 1.2,
+        cameraLerpFactor * 0.3, // More smoothing at high speeds
         speedFactor
       );
 
@@ -841,42 +823,62 @@ async function init() {
 
     // Calculate a smooth turning offset that gradually changes
     // This prevents camera jerks when turning starts/stops
-    let turnInfluence = 0;
+    let targetTurnInfluence = 0;
+
+    // Calculate turn influence based on steering input AND actual car rotation rate
+    // to make it more realistic and smooth
     if (carControls.left) {
-      turnInfluence = (Math.abs(carSpeed) / carMaxSpeed) * 20;
+      targetTurnInfluence = (Math.abs(carSpeed) / carMaxSpeed) * 15; // Reduced from 20
     } else if (carControls.right) {
-      turnInfluence = (-Math.abs(carSpeed) / carMaxSpeed) * 20;
+      targetTurnInfluence = (-Math.abs(carSpeed) / carMaxSpeed) * 15; // Reduced from 20
     }
+
+    // Smooth the turn influence transition - key to reducing camera shake
+    currentTurnInfluence = THREE.MathUtils.lerp(
+      currentTurnInfluence,
+      targetTurnInfluence,
+      0.05 // Very gentle transition for turn influence
+    );
 
     // Create a look-at point that smoothly tracks in front of the car
     const lookAtTarget = selectedCar.position
       .clone()
-      .add(new THREE.Vector3(turnInfluence, thirdPersonCameraHeight * 0.25, 0));
+      .add(
+        new THREE.Vector3(
+          currentTurnInfluence,
+          thirdPersonCameraHeight * 0.2,
+          0
+        )
+      );
 
     // Smooth the look-at point transition
     if (instant || prevLookAtPoint.lengthSq() === 0) {
       prevLookAtPoint.copy(lookAtTarget);
     } else {
       // Use slightly faster lerp for look-at to keep focus on car
-      prevLookAtPoint.lerp(lookAtTarget, cameraLerpFactor * 1.5);
+      // But still slow enough to reduce shake
+      prevLookAtPoint.lerp(
+        lookAtTarget,
+        Math.min(cameraLerpFactor * 1.2, 0.15)
+      );
     }
 
     camera.lookAt(prevLookAtPoint);
 
     // Apply a smooth camera tilt during turns with proper damping
-    if (Math.abs(carSpeed) > 3) {
-      if (carControls.left) {
-        targetCameraRotationZ =
-          0.03 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
-      } else if (carControls.right) {
-        targetCameraRotationZ =
-          -0.03 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
-      } else {
-        targetCameraRotationZ = 0;
-      }
-    } else {
-      targetCameraRotationZ = 0;
-    }
+    // Calculate target tilt based on turn influence for consistency
+    const tiltFactor =
+      Math.abs(carSpeed) > 2
+        ? 0.02 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1)
+        : 0;
+    const newTargetRotationZ = -currentTurnInfluence * 0.001 * tiltFactor;
+
+    // Even smoother damping for camera rotation
+    targetCameraRotationZ = THREE.MathUtils.lerp(
+      targetCameraRotationZ,
+      newTargetRotationZ,
+      0.05 // Gentle transition for tilt
+    );
 
     // Apply smooth tilt transition
     camera.rotation.z = THREE.MathUtils.lerp(
@@ -1155,25 +1157,6 @@ function UpdateBoxHelper(raycastObjects) {
   });
 }
 
-function loadFBXModel(fbxPath) {
-  const onProgress = function (xhr) {
-    if (xhr.lengthComputable) {
-      const percentComplete = (xhr.loaded / xhr.total) * 100;
-    }
-  };
-
-  return new Promise((resolve, reject) => {
-    new FBXLoader().load(
-      fbxPath,
-      (obj) => {
-        resolve(obj);
-      },
-      onProgress,
-      reject
-    );
-  });
-}
-
 function loadGLTFModel(gltfPath) {
   const onProgress = function (xhr) {
     if (xhr.lengthComputable) {
@@ -1210,15 +1193,7 @@ function loadGLTFModel(gltfPath) {
   });
 }
 
-function getPlane(size) {
-  let geometry = new THREE.PlaneGeometry(size, size);
-  let material = new THREE.MeshStandardMaterial({
-    color: 0x5ab3c6,
-    side: THREE.DoubleSide,
-  });
-  let mesh = new THREE.Mesh(geometry, material);
-  return mesh;
-}
+// getPlane function has been removed as it's no longer used
 
 // Add HTML for driving UI
 document.addEventListener("DOMContentLoaded", function () {

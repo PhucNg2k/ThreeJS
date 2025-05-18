@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1972 Datsun 240K GT - Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #333333;
+        }
+        #info {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            color: white;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading model...</div>
+    <div id="info">
+        Model: 1972 Datsun 240k GT by Karol Miklas - 
+        <a href="https://sketchfab.com/3d-models/free-1972-datsun-240k-gt-b2303a552b444e5b8637fdf5169b41cb" 
+           target="_blank" style="color: lightblue;">Sketchfab</a>
+    </div>
+    <script type="module" src="main.js"></script>
+    <script>
+        // Hide loading message when model is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const loader = document.getElementById('loading');
+            window.addEventListener('load', () => {
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                }, 3000);
+            });
+        });
+    </script>
+</body>
+</html>
