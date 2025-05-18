@@ -242,14 +242,20 @@ async function init() {
   asparkCar.userData.velocity = new THREE.Vector3();
   asparkCar.userData.acceleration = new THREE.Vector3();
   asparkCar.userData.direction = new THREE.Vector3(0, 0, 1);
+  // Add wheels property to Aspark car (even if it's empty - this prevents errors)
+  asparkCar.userData.wheels = [];
 
   bugattiCar.userData.velocity = new THREE.Vector3();
   bugattiCar.userData.acceleration = new THREE.Vector3();
   bugattiCar.userData.direction = new THREE.Vector3(0, 0, 1);
+  // Add wheels property to Bugatti car
+  bugattiCar.userData.wheels = [];
 
   ferrariCar.userData.velocity = new THREE.Vector3();
   ferrariCar.userData.acceleration = new THREE.Vector3();
   ferrariCar.userData.direction = new THREE.Vector3(0, 0, 1);
+  // Add wheels property to Ferrari car
+  ferrariCar.userData.wheels = [];
 
   // Scale the McLaren models appropriately - significantly increased to make chassis larger relative to wheels
   mclarenCar.scale.set(150, 150, 150);
@@ -404,8 +410,14 @@ async function init() {
       return;
     }
 
+    // Make sure we check for intersections before handling interaction
     checkIntersection(RayCastObjects);
     isMouseClicked = true;
+
+    console.log(
+      "Mouse down, INTERSECTED:",
+      INTERSECTED ? INTERSECTED.uuid : "none"
+    );
 
     if (INTERSECTED) {
       handleInteraction(INTERSECTED, isMouseClicked);
@@ -429,9 +441,24 @@ async function init() {
 
   window.addEventListener("resize", windowResize);
   window.addEventListener("pointermove", onPointerMove);
-
   controls.addEventListener("change", () => {
-    checkIntersection(RayCastObjects);
+    // Only check intersections when not in driving mode
+    if (!isDriving) {
+      checkIntersection(RayCastObjects);
+    }
+  });
+  // Additionally listen for unlock event which happens when exiting car
+  controls.addEventListener("unlock", () => {
+    // Give the controls time to stabilize before checking intersections again
+    if (!isDriving) {
+      // Force pointer reset to ensure clean state after unlocking
+      pointer.set(0, 0);
+
+      // Allow a moment before checking for intersections
+      setTimeout(() => {
+        checkIntersection(RayCastObjects);
+      }, 300);
+    }
   });
 
   let dirCam = new THREE.Vector3();
@@ -461,7 +488,6 @@ async function init() {
           console.log("MergedMesh: ", mergedMesh);
           continue;
         }
-
         let colliderBox = getSimplifyCollider(child);
         colliderBox.name = child.name + "_collider";
         colliderBox.applyMatrix4(child.matrixWorld.clone().invert());
@@ -469,7 +495,13 @@ async function init() {
         rayCastMapping[colliderBox.uuid] = child.uuid;
         child.add(colliderBox);
 
+        // Store reference to collider in the original object userData
+        // This helps with proper car selection later
+        child.userData.collider = colliderBox;
+
+        // Create box helper but don't show it (set visible to false)
         const boxHelper = new THREE.BoxHelper(colliderBox, 0xffff00);
+        boxHelper.visible = false; // Hide the yellow bounding boxes
         colliderBox.userData.helper = boxHelper;
         scene.add(boxHelper);
       }
@@ -486,7 +518,6 @@ async function init() {
     }
     return false;
   }
-
   function checkIntersection(objList) {
     raycaster.setFromCamera(pointer, camera);
     const intersectsList = raycaster.intersectObjects(objList, true);
@@ -503,7 +534,14 @@ async function init() {
       INTERSECTED = selectedObject;
       let collider_uuid = INTERSECTED.uuid;
       let og_object_uuid = RayCastMapping[collider_uuid];
-      applyOutlineToMesh(retrieveObjectWithUUID(og_object_uuid));
+
+      // If we have a valid uuid mapping, apply outline
+      if (og_object_uuid) {
+        const originalObject = retrieveObjectWithUUID(og_object_uuid);
+        if (originalObject) {
+          applyOutlineToMesh(originalObject);
+        }
+      }
     } else {
       if (INTERSECTED) {
         removeOutline();
@@ -522,16 +560,26 @@ async function init() {
     }
   }
   function enterCarDriving(car) {
+    // Set global state
     isDriving = true;
-    // For GLTF models, the main model might be the parent itself
     selectedCar = car;
     controls.unlock();
 
-    // Ensure the car has proper physics properties
-    if (!selectedCar.userData.direction) {
-      selectedCar.userData.velocity = new THREE.Vector3();
-      selectedCar.userData.acceleration = new THREE.Vector3();
-      selectedCar.userData.direction = new THREE.Vector3(0, 0, 1);
+    console.log(`Entering car driving mode for: ${selectedCar.name}`);
+
+    // Always ensure all car physics properties exist and are properly initialized
+    selectedCar.userData.velocity = new THREE.Vector3();
+    selectedCar.userData.acceleration = new THREE.Vector3();
+
+    // Initialize direction vector based on car's current rotation
+    selectedCar.userData.direction = new THREE.Vector3(0, 0, 1);
+    selectedCar.userData.direction.applyQuaternion(selectedCar.quaternion);
+    selectedCar.userData.direction.normalize();
+
+    // Make sure car has wheels property to prevent "wheelS" error
+    if (!selectedCar.userData.wheels) {
+      selectedCar.userData.wheels = [];
+      console.log(`Created empty wheels array for ${selectedCar.name}`);
     }
 
     // Reset car controls
@@ -553,13 +601,21 @@ async function init() {
 
     console.log(`Now driving: ${selectedCar.name}`);
 
-    // Show driving instructions
+    // Show driving instructions with current car name
     const drivingInstructions = document.getElementById("drivingInstructions");
     if (drivingInstructions) {
       drivingInstructions.style.display = "block";
+
+      // Update the car name in the driving instructions
+      const carNameDisplay = document.getElementById("current-car-name");
+      if (carNameDisplay) {
+        carNameDisplay.textContent = `Currently driving: ${selectedCar.name}`;
+      }
     }
   }
   function exitCarDriving() {
+    if (!isDriving || !selectedCar) return;
+
     isDriving = false;
     carSpeed = 0;
 
@@ -573,24 +629,62 @@ async function init() {
     camera.position.copy(behindCar);
     camera.lookAt(selectedCar.position);
 
-    // Clear the selected car
-    selectedCar = null;
+    // Reset car controls
+    carControls.forward = false;
+    carControls.backward = false;
+    carControls.left = false;
+    carControls.right = false;
+    carControls.brake = false;
 
-    // Remove driving GUI
-    removeDrivingGUI();
+    // Make sure car physics values are reset
+    if (selectedCar) {
+      // Reset any car-specific properties
+      selectedCar.userData.velocity.set(0, 0, 0);
+      selectedCar.userData.acceleration.set(0, 0, 0);
 
-    console.log("Exited driving mode");
+      // Important: Ensure the car's direction is correctly reset
+      // This is crucial for other cars to be properly handled
+      selectedCar.userData.direction.set(0, 0, 1);
+      selectedCar.userData.direction.applyQuaternion(selectedCar.quaternion);
+      selectedCar.userData.direction.normalize();
 
-    // Hide driving instructions
-    const drivingInstructions = document.getElementById("drivingInstructions");
-    if (drivingInstructions) {
-      drivingInstructions.style.display = "none";
+      console.log("Exited driving mode for: " + selectedCar.name);
+
+      // Save reference to car before clearing selectedCar
+      const lastCar = selectedCar;
+
+      // Clear the selected car
+      selectedCar = null;
+
+      // Remove driving GUI
+      removeDrivingGUI();
+
+      // Hide driving instructions
+      const drivingInstructions = document.getElementById(
+        "drivingInstructions"
+      );
+      if (drivingInstructions) {
+        drivingInstructions.style.display = "none";
+      }
+
+      // Return to normal controls after a short delay
+      setTimeout(() => {
+        controls.lock();
+
+        // Reset pointer to center so raycasting works again after exiting car
+        pointer.set(0, 0);
+
+        // Make sure the INTERSECTED is cleared so we can detect cars again
+        INTERSECTED = null;
+
+        // Force a check for intersections after returning to walking mode
+        setTimeout(() => {
+          checkIntersection(RayCastObjects);
+        }, 300);
+      }, 100);
+
+      return lastCar; // Return the car that was just exited
     }
-
-    // Return to normal controls after a short delay
-    setTimeout(() => {
-      controls.lock();
-    }, 100);
   }
 
   let drivingGui = null;
@@ -611,9 +705,8 @@ async function init() {
     drivingGui.domElement.style.right = "10px";
     drivingGui.domElement.style.top = "10px";
     guiContainer.appendChild(drivingGui.domElement);
-
-    // Add car name to GUI title
-    drivingGui.title(`Driving McLaren ${selectedCar.name}`);
+    // Add car name to GUI title with the actual selected car model
+    drivingGui.title(`Driving ${selectedCar.name}`);
 
     drivingGui.add({ "Exit Car": exitCarDriving }, "Exit Car");
 
@@ -664,9 +757,8 @@ async function init() {
       document.body.appendChild(instructions);
     }
 
-    instructions.innerHTML = `
-      <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 15px; border-radius: 5px; font-family: Arial, sans-serif;">
-        <h3 style="margin-top: 0; margin-bottom: 10px;">McLaren Controls:</h3>
+    instructions.innerHTML = `      <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 15px; border-radius: 5px; font-family: Arial, sans-serif;">
+        <h3 style="margin-top: 0; margin-bottom: 10px;">${selectedCar.name} Controls:</h3>
         <div style="display: grid; grid-template-columns: auto auto; gap: 8px; align-items: center;">
           <div><strong>W/↑</strong></div><div>Accelerate</div>
           <div><strong>S/↓</strong></div><div>Reverse</div>
@@ -727,7 +819,7 @@ async function init() {
     carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
 
     // Calculate turn speed based on car speed
-    // Slower rotation at high speeds for stability, faster rotation at lower speeds for maneuverability
+    // Slower rotation at high speeds for stability, faster rotation at low speeds for maneuverability
     const adaptiveTurnSpeed =
       carTurnSpeed * (1 - (Math.abs(carSpeed) / carMaxSpeed) * 0.5);
 
@@ -772,7 +864,8 @@ async function init() {
     }
 
     // Simulate wheel rotation based on speed
-    if (selectedCar.userData.wheels) {
+    // Check if the car has wheels and rotate them
+    if (selectedCar.userData.wheels && selectedCar.userData.wheels.length > 0) {
       selectedCar.userData.wheels.forEach((wheel) => {
         wheel.rotation.x += carSpeed * 0.01;
       });
@@ -887,7 +980,6 @@ async function init() {
       0.03
     );
   }
-
   function handleInteraction(mesh, isMouseClicked) {
     if (isMouseClicked) {
       controls.unlock();
@@ -903,8 +995,15 @@ async function init() {
 
         // Check if it's one of our cars
         if (cars.includes(targetObject)) {
+          console.log("Car clicked:", targetObject.name);
+
           // Ask user if they want to drive this car
           if (confirm(`Do you want to drive the ${targetObject.name}?`)) {
+            // Force reset of any existing state that might interfere with car selection
+            INTERSECTED = null;
+            removeOutline();
+
+            // Ensure clean car entry
             enterCarDriving(targetObject);
             return;
           }
@@ -1054,13 +1153,19 @@ async function init() {
   function removeOutline() {
     outlinePass.selectedObjects = [];
   }
-
   function onPointerMove(event) {
     if (controls.isLocked) {
+      // When pointer is locked (walking mode), center the pointer
       pointer.set(0, 0);
     } else {
+      // When pointer is free (selection mode), use the actual pointer position
       pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
       pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      // Check for intersection when pointer moves and not in driving mode
+      if (!isDriving) {
+        checkIntersection(RayCastObjects);
+      }
     }
   }
 
@@ -1210,7 +1315,6 @@ document.addEventListener("DOMContentLoaded", function () {
     drivingInstructions.style.padding = "15px";
     drivingInstructions.style.borderRadius = "5px";
     drivingInstructions.style.fontFamily = "Arial, sans-serif";
-
     drivingInstructions.innerHTML = `
       <h3 style="margin-top: 0">Car Controls:</h3>
       <div style="display: grid; grid-template-columns: auto auto; gap: 5px;">
@@ -1221,6 +1325,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <div>Space:</div><div>Brake</div>
         <div>P/Esc:</div><div>Exit Vehicle</div>
       </div>
+      <div id="current-car-name" style="margin-top: 10px; font-style: italic;"></div>
     `;
 
     document.body.appendChild(drivingInstructions);
