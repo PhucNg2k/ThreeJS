@@ -10,6 +10,8 @@ import { OutlinePass } from "three/addons/postprocessing/OutlinePass.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import GUI from "lil-gui";
+
+
 RectAreaLightUniformsLib.init();
 const clock = new THREE.Clock();
 const pointer = new THREE.Vector2();
@@ -17,6 +19,9 @@ let INTERSECTED = null;
 let composer, outlinePass;
 const globalScaleValue = 0.5;
 let SceneObject = {};
+
+
+let scene ,camera, orthoCamera, minimapRenderer;
 
 // Car driving variables
 let cars = [];
@@ -40,12 +45,16 @@ let carControls = {
 };
 
 async function init() {
+  minimapRenderer = new THREE.WebGLRenderer({ alpha: true, canvas: document.getElementById("minimapCanvas") });
+  minimapRenderer.setPixelRatio(window.devicePixelRatio);
+  minimapRenderer.setClearColor(0x000000, 0); // transparent background
+  
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   const stats = new Stats();
   document.getElementById("webgl").appendChild(stats.dom);
   document.getElementById("webgl").appendChild(renderer.domElement);
-  const camera = new THREE.PerspectiveCamera(
+  camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
     1.0,
@@ -53,7 +62,8 @@ async function init() {
   );
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(window.devicePixelRatio);
-  const scene = new THREE.Scene();
+
+  scene = new THREE.Scene();
   const cubeTexture = new THREE.CubeTextureLoader().setPath("BoxPieces/").load(
     ["px.bmp", "nx.bmp", "py.bmp", "ny.bmp", "pz.bmp", "nz.bmp"],
     (texture) => {
@@ -77,6 +87,14 @@ async function init() {
   groundTexture.anisotropy = 16;
   groundTexture.encoding = THREE.sRGBEncoding;
 
+
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+  orthoCamera = new THREE.OrthographicCamera(-width, width, height, -height, 1, 2000);
+  orthoCamera.position.set(0, 1000, 0);
+  orthoCamera.lookAt(0, 0, 0);
+  scene.add(orthoCamera);
+
   const controls = new PointerLockControls(camera, renderer.domElement);
   const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
   function resetKeys() {
@@ -84,6 +102,8 @@ async function init() {
       keys[key] = false;
     }
   }
+
+  
 
   // Updated key controls for both walking and driving
   const onKeyDown = (event) => {
@@ -380,10 +400,7 @@ UNLOCK EVENT:
 
   window.addEventListener("mousedown", (event) => {
     console.log("MOUSE DOWN EVENT")
-    savedCameraState = {
-        position: camera.position.clone(),
-        quaternion: camera.quaternion.clone(),
-    };
+    
 
     const guiPanel = document.getElementById("objectInfoPanel");
     const clickedInsideGUI = guiPanel.contains(event.target);
@@ -507,10 +524,12 @@ UNLOCK EVENT:
   }
 
   function updateCamera() {
-    
+    savedCameraState = {
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+    };
     updateControlMove(keys);
     updateCameraPoint();
-    
     
   }
 
@@ -953,7 +972,10 @@ UNLOCK EVENT:
   function animate() {
     requestAnimationFrame(animate);
     updateCamera();
+    updateMapCamera();
+    
     render();
+    renderMap();
   }
 
   function windowResize() {
@@ -962,6 +984,7 @@ UNLOCK EVENT:
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
+    //orthoCamera.updateProjectionMatrix() 
     render();
   }
 
@@ -970,7 +993,7 @@ UNLOCK EVENT:
     UpdateBoxHelper(RayCastObjects);
 
     // Use the composer for rendering when outlining is needed
-    if (outlinePass.selectedObjects.length > 0) {
+    if (outlinePass.selectedObjects.length < 0) {
       composer.render();
     } else {
       renderer.render(scene, camera);
@@ -978,6 +1001,40 @@ UNLOCK EVENT:
   }
 
   return scene;
+}
+function updateMapCamera() {
+  // Copy XZ position from main camera
+  orthoCamera.position.x = camera.position.x;
+  orthoCamera.position.z = camera.position.z;
+  orthoCamera.position.y = 1000;
+
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  dir.y = 0;
+  dir.normalize();
+
+  const target = new THREE.Vector3(
+    camera.position.x + dir.x,
+    0,
+    camera.position.z + dir.z
+  );
+
+  orthoCamera.lookAt(target);
+  orthoCamera.updateProjectionMatrix();
+}
+
+function renderMap() {
+  const wrapper = document.getElementById("minimapWrapper");
+  const width = wrapper.clientWidth;
+  const height = wrapper.clientHeight;
+
+  minimapRenderer.setSize(width, height);
+  minimapRenderer.setScissor(0, 0, width, height);
+  minimapRenderer.setViewport(0, 0, width, height);
+  minimapRenderer.setScissorTest(true);
+  minimapRenderer.clear();
+  minimapRenderer.render(scene, orthoCamera);
+  minimapRenderer.setScissorTest(false);
 }
 
 function UpdateBoxHelper(raycastObjects) {
@@ -1108,5 +1165,5 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
-let scene = init();
-window.scene = scene;
+init();
+
