@@ -15,25 +15,8 @@ let INTERSECTED = null;
 let composer, outlinePass;
 let SceneObject = {};
 
-// Car driving variables
+// Car array for tracking cars in the scene
 let cars = [];
-let selectedCar = null;
-let isDriving = false;
-let carSpeed = 0;
-let carMaxSpeed = 15;
-let carAcceleration = 0.2;
-let carDeceleration = 0.1;
-let carTurnSpeed = 0.03;
-let thirdPersonCameraDistance = 300;
-let thirdPersonCameraHeight = 350;
-let cameraLerpFactor = 0.1;
-let carControls = {
-  forward: false,
-  backward: false,
-  left: false,
-  right: false,
-  brake: false,
-};
 
 async function init() {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -72,8 +55,7 @@ async function init() {
       keys[key] = false;
     }
   }
-
-  // Updated key controls for both walking and driving
+  // Key controls for walking only (driving controls moved to driving.js)
   const onKeyDown = (event) => {
     if (controls.isLocked) {
       if (event.code === "KeyP") {
@@ -84,66 +66,12 @@ async function init() {
         keys[event.code] = true;
       }
     }
-
-    // Car controls
-    if (isDriving) {
-      switch (event.code) {
-        case "KeyW":
-        case "ArrowUp":
-          carControls.forward = true;
-          break;
-        case "KeyS":
-        case "ArrowDown":
-          carControls.backward = true;
-          break;
-        case "KeyA":
-        case "ArrowLeft":
-          carControls.left = true;
-          break;
-        case "KeyD":
-        case "ArrowRight":
-          carControls.right = true;
-          break;
-        case "Space":
-          carControls.brake = true;
-          break;
-        case "KeyP":
-        case "Escape":
-          exitCarDriving();
-          break;
-      }
-    }
   };
 
   const onKeyUp = (event) => {
     if (controls.isLocked) {
       if (keys.hasOwnProperty(event.code)) {
         keys[event.code] = false;
-      }
-    }
-
-    // Car controls
-    if (isDriving) {
-      switch (event.code) {
-        case "KeyW":
-        case "ArrowUp":
-          carControls.forward = false;
-          break;
-        case "KeyS":
-        case "ArrowDown":
-          carControls.backward = false;
-          break;
-        case "KeyA":
-        case "ArrowLeft":
-          carControls.left = false;
-          break;
-        case "KeyD":
-        case "ArrowRight":
-          carControls.right = false;
-          break;
-        case "Space":
-          carControls.brake = false;
-          break;
       }
     }
   };
@@ -402,7 +330,7 @@ async function init() {
     const clickedInsideGUI = guiPanel.contains(event.target);
     if (clickedInsideGUI) return;
 
-    if (!controls.isLocked && !isDriving) {
+    if (!controls.isLocked) {
       setTimeout(() => {
         controls.lock();
         clearGuiPanel(guiPanel);
@@ -442,23 +370,19 @@ async function init() {
   window.addEventListener("resize", windowResize);
   window.addEventListener("pointermove", onPointerMove);
   controls.addEventListener("change", () => {
-    // Only check intersections when not in driving mode
-    if (!isDriving) {
-      checkIntersection(RayCastObjects);
-    }
+    // Always check intersections since driving is now in a separate page
+    checkIntersection(RayCastObjects);
   });
-  // Additionally listen for unlock event which happens when exiting car
-  controls.addEventListener("unlock", () => {
-    // Give the controls time to stabilize before checking intersections again
-    if (!isDriving) {
-      // Force pointer reset to ensure clean state after unlocking
-      pointer.set(0, 0);
 
-      // Allow a moment before checking for intersections
-      setTimeout(() => {
-        checkIntersection(RayCastObjects);
-      }, 300);
-    }
+  // Listen for unlock event
+  controls.addEventListener("unlock", () => {
+    // Force pointer reset to ensure clean state after unlocking
+    pointer.set(0, 0);
+
+    // Allow a moment before checking for intersections
+    setTimeout(() => {
+      checkIntersection(RayCastObjects);
+    }, 300);
   });
 
   let dirCam = new THREE.Vector3();
@@ -549,436 +473,48 @@ async function init() {
       }
     }
   }
-
   function updateCamera() {
-    if (isDriving) {
-      updateCarDriving();
-      updateCarFollowCamera();
-    } else {
-      updateControlMove(keys);
-      updateCameraPoint();
-    }
+    // Driving is now handled in driving.js, so we only need the non-driving updates here
+    updateControlMove(keys);
+    updateCameraPoint();
   }
   function enterCarDriving(car) {
-    // Set global state
-    isDriving = true;
-    selectedCar = car;
-    controls.unlock();
+    // Instead of setting up driving in this page, redirect to the dedicated driving page
+    // Find the index of the car in the cars array
+    const carIndex = cars.indexOf(car);
 
-    console.log(`Entering car driving mode for: ${selectedCar.name}`);
-
-    // Always ensure all car physics properties exist and are properly initialized
-    selectedCar.userData.velocity = new THREE.Vector3();
-    selectedCar.userData.acceleration = new THREE.Vector3();
-
-    // Initialize direction vector based on car's current rotation
-    selectedCar.userData.direction = new THREE.Vector3(0, 0, 1);
-    selectedCar.userData.direction.applyQuaternion(selectedCar.quaternion);
-    selectedCar.userData.direction.normalize();
-
-    // Make sure car has wheels property to prevent "wheelS" error
-    if (!selectedCar.userData.wheels) {
-      selectedCar.userData.wheels = [];
-      console.log(`Created empty wheels array for ${selectedCar.name}`);
-    }
-
-    // Reset car controls
-    carControls.forward = false;
-    carControls.backward = false;
-    carControls.left = false;
-    carControls.right = false;
-    carControls.brake = false;
-    carSpeed = 0;
-
-    // Create driving GUI
-    createDrivingGUI();
-
-    // Setup initial camera position behind the car
-    updateCarFollowCamera(true);
-
-    // Hide the outline when driving
-    removeOutline();
-
-    console.log(`Now driving: ${selectedCar.name}`);
-
-    // Show driving instructions with current car name
-    const drivingInstructions = document.getElementById("drivingInstructions");
-    if (drivingInstructions) {
-      drivingInstructions.style.display = "block";
-
-      // Update the car name in the driving instructions
-      const carNameDisplay = document.getElementById("current-car-name");
-      if (carNameDisplay) {
-        carNameDisplay.textContent = `Currently driving: ${selectedCar.name}`;
-      }
-    }
-  }
-  function exitCarDriving() {
-    if (!isDriving || !selectedCar) return;
-
-    isDriving = false;
-    carSpeed = 0;
-
-    // Reset camera position to be behind the car
-    const behindCar = new THREE.Vector3();
-    selectedCar.getWorldDirection(behindCar);
-    behindCar.multiplyScalar(-300); // Move 300 units behind car
-    behindCar.add(selectedCar.position);
-    behindCar.y = selectedCar.position.y + 100; // Slightly above car
-
-    camera.position.copy(behindCar);
-    camera.lookAt(selectedCar.position);
-
-    // Reset car controls
-    carControls.forward = false;
-    carControls.backward = false;
-    carControls.left = false;
-    carControls.right = false;
-    carControls.brake = false;
-
-    // Make sure car physics values are reset
-    if (selectedCar) {
-      // Reset any car-specific properties
-      selectedCar.userData.velocity.set(0, 0, 0);
-      selectedCar.userData.acceleration.set(0, 0, 0);
-
-      // Important: Ensure the car's direction is correctly reset
-      // This is crucial for other cars to be properly handled
-      selectedCar.userData.direction.set(0, 0, 1);
-      selectedCar.userData.direction.applyQuaternion(selectedCar.quaternion);
-      selectedCar.userData.direction.normalize();
-
-      console.log("Exited driving mode for: " + selectedCar.name);
-
-      // Save reference to car before clearing selectedCar
-      const lastCar = selectedCar;
-
-      // Clear the selected car
-      selectedCar = null;
-
-      // Remove driving GUI
-      removeDrivingGUI();
-
-      // Hide driving instructions
-      const drivingInstructions = document.getElementById(
-        "drivingInstructions"
+    if (carIndex !== -1) {
+      console.log(
+        `Redirecting to driving page for car: ${car.name} (index: ${carIndex})`
       );
-      if (drivingInstructions) {
-        drivingInstructions.style.display = "none";
-      }
-
-      // Return to normal controls after a short delay
-      setTimeout(() => {
-        controls.lock();
-
-        // Reset pointer to center so raycasting works again after exiting car
-        pointer.set(0, 0);
-
-        // Make sure the INTERSECTED is cleared so we can detect cars again
-        INTERSECTED = null;
-
-        // Force a check for intersections after returning to walking mode
-        setTimeout(() => {
-          checkIntersection(RayCastObjects);
-        }, 300);
-      }, 100);
-
-      return lastCar; // Return the car that was just exited
+      // Navigate to the driving page with the car index as a parameter
+      window.location.href = `driving.html?car=${carIndex}`;
+    } else {
+      console.error("Car not found in cars array:", car.name);
     }
+  } // This function is no longer needed as exiting is handled in the driving page
+  function exitCarDriving() {
+    // This function is kept as a stub for any code that might call it
+    console.log("exitCarDriving function is now handled in driving.js");
   }
 
-  let drivingGui = null;
+  let drivingGui = null; // The following functions have been moved to driving.js
+  // They are kept here as stubs to prevent errors in any code that might call them
+
   function createDrivingGUI() {
-    if (drivingGui) {
-      drivingGui.destroy?.();
-    }
-
-    const guiContainer = document.createElement("div");
-    guiContainer.id = "drivingGUI";
-    guiContainer.style.position = "absolute";
-    guiContainer.style.right = "10px";
-    guiContainer.style.top = "10px";
-    document.body.appendChild(guiContainer);
-
-    drivingGui = new GUI({ autoPlace: false, width: 300 });
-    drivingGui.domElement.style.position = "absolute";
-    drivingGui.domElement.style.right = "10px";
-    drivingGui.domElement.style.top = "10px";
-    guiContainer.appendChild(drivingGui.domElement);
-    // Add car name to GUI title with the actual selected car model
-    drivingGui.title(`Driving ${selectedCar.name}`);
-
-    drivingGui.add({ "Exit Car": exitCarDriving }, "Exit Car");
-
-    const carFolder = drivingGui.addFolder("Performance Settings");
-    carFolder
-      .add({ "Max Speed": carMaxSpeed }, "Max Speed", 5, 50)
-      .onChange((value) => {
-        carMaxSpeed = value;
-      });
-    carFolder
-      .add({ Acceleration: carAcceleration }, "Acceleration", 0.1, 1)
-      .onChange((value) => {
-        carAcceleration = value;
-      });
-    carFolder
-      .add({ "Turn Speed": carTurnSpeed }, "Turn Speed", 0.01, 0.1)
-      .onChange((value) => {
-        carTurnSpeed = value;
-      });
-    carFolder
-      .add({ "Braking Power": carDeceleration }, "Braking Power", 0.05, 0.5)
-      .onChange((value) => {
-        carDeceleration = value;
-      });
-
-    const cameraFolder = drivingGui.addFolder("Camera Settings");
-    cameraFolder
-      .add({ Distance: thirdPersonCameraDistance }, "Distance", 100, 500)
-      .onChange((value) => {
-        thirdPersonCameraDistance = value;
-      });
-    cameraFolder
-      .add({ Height: thirdPersonCameraHeight }, "Height", 50, 300)
-      .onChange((value) => {
-        thirdPersonCameraHeight = value;
-      });
-    cameraFolder
-      .add({ Smoothness: cameraLerpFactor }, "Smoothness", 0.01, 1)
-      .onChange((value) => {
-        cameraLerpFactor = value;
-      });
-
-    // Create or update driving instructions
-    let instructions = document.getElementById("drivingInstructions");
-    if (!instructions) {
-      instructions = document.createElement("div");
-      instructions.id = "drivingInstructions";
-      document.body.appendChild(instructions);
-    }
-
-    instructions.innerHTML = `      <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 15px; border-radius: 5px; font-family: Arial, sans-serif;">
-        <h3 style="margin-top: 0; margin-bottom: 10px;">${selectedCar.name} Controls:</h3>
-        <div style="display: grid; grid-template-columns: auto auto; gap: 8px; align-items: center;">
-          <div><strong>W/↑</strong></div><div>Accelerate</div>
-          <div><strong>S/↓</strong></div><div>Reverse</div>
-          <div><strong>A/←</strong></div><div>Turn Left</div>
-          <div><strong>D/→</strong></div><div>Turn Right</div>
-          <div><strong>Space</strong></div><div>Brake</div>
-          <div><strong>P/Esc</strong></div><div>Exit Vehicle</div>
-        </div>
-      </div>
-    `;
-    instructions.style.display = "block";
-
-    carFolder.open();
-    cameraFolder.open();
+    console.log("createDrivingGUI function is now handled in driving.js");
   }
 
   function removeDrivingGUI() {
-    if (drivingGui) {
-      drivingGui.destroy?.();
-      drivingGui = null;
-
-      const guiContainer = document.getElementById("drivingGUI");
-      if (guiContainer) {
-        guiContainer.remove();
-      }
-
-      const instructions = document.getElementById("drivingInstructions");
-      if (instructions) {
-        instructions.remove();
-      }
-    }
+    console.log("removeDrivingGUI function is now handled in driving.js");
   }
+
   function updateCarDriving() {
-    if (!selectedCar || !isDriving) return;
-
-    // Apply acceleration with smoother handling
-    if (carControls.forward) {
-      carSpeed += carAcceleration;
-    } else if (carControls.backward) {
-      carSpeed -= carAcceleration;
-    } else {
-      if (carSpeed > 0) {
-        carSpeed -= carDeceleration;
-      } else if (carSpeed < 0) {
-        carSpeed += carDeceleration;
-      }
-      if (Math.abs(carSpeed) < 0.1) {
-        carSpeed = 0;
-      }
-    }
-
-    // Apply braking
-    if (carControls.brake) {
-      carSpeed *= 0.9;
-    }
-
-    // Limit speed
-    carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
-
-    // Calculate turn speed based on car speed
-    // Slower rotation at high speeds for stability, faster rotation at low speeds for maneuverability
-    const adaptiveTurnSpeed =
-      carTurnSpeed * (1 - (Math.abs(carSpeed) / carMaxSpeed) * 0.5);
-
-    // Apply turning (only when car is moving)
-    if (Math.abs(carSpeed) > 0.1) {
-      // Apply smoother turning with easing
-      if (carControls.left) {
-        selectedCar.rotation.y += adaptiveTurnSpeed * Math.sign(carSpeed);
-      }
-      if (carControls.right) {
-        selectedCar.rotation.y -= adaptiveTurnSpeed * Math.sign(carSpeed);
-      }
-    }
-
-    // Update direction vector based on car's rotation
-    const direction = new THREE.Vector3(0, 0, 1);
-    direction.applyQuaternion(selectedCar.quaternion);
-    direction.y = 0; // Keep car on the ground
-    direction.normalize();
-    selectedCar.userData.direction.copy(direction);
-
-    // Update car position based on direction and speed
-    const moveVector = selectedCar.userData.direction
-      .clone()
-      .multiplyScalar(carSpeed);
-    selectedCar.position.add(moveVector); // Apply ground constraint - keep car slightly above ground to prevent wheel clipping
-    selectedCar.position.y = 5;
-
-    // Update car's collider if it exists
-    if (selectedCar.userData.collider) {
-      selectedCar.userData.collider.position.copy(selectedCar.position);
-      selectedCar.userData.collider.rotation.copy(selectedCar.rotation);
-    }
-
-    // If the car is moving slowly, apply some damping to eventually stop it
-    if (
-      Math.abs(carSpeed) < 1 &&
-      !carControls.forward &&
-      !carControls.backward
-    ) {
-      carSpeed = 0;
-    }
-
-    // Simulate wheel rotation based on speed
-    // Check if the car has wheels and rotate them
-    if (selectedCar.userData.wheels && selectedCar.userData.wheels.length > 0) {
-      selectedCar.userData.wheels.forEach((wheel) => {
-        wheel.rotation.x += carSpeed * 0.01;
-      });
-    }
-  } // Store previous camera data for smooth transitions
-  let prevCameraTarget = new THREE.Vector3();
-  let prevLookAtPoint = new THREE.Vector3();
-  let targetCameraRotationZ = 0;
-  let currentTurnInfluence = 0; // Track current turn influence for smoother transitions
+    console.log("updateCarDriving function is now handled in driving.js");
+  }
 
   function updateCarFollowCamera(instant = false) {
-    if (!selectedCar || !isDriving) return;
-
-    // Create a dampened direction that's more stable during sharp turns
-    const carDirection = selectedCar.userData.direction.clone();
-
-    // Create a smoother camera path by calculating a target behind the car
-    // that considers both position and orientation
-    const cameraOffset = carDirection
-      .clone()
-      .multiplyScalar(-thirdPersonCameraDistance);
-    cameraOffset.y = thirdPersonCameraHeight;
-
-    const targetPosition = selectedCar.position.clone().add(cameraOffset);
-
-    // Initialize previous positions if this is the first update
-    if (instant || prevCameraTarget.lengthSq() === 0) {
-      camera.position.copy(targetPosition);
-      prevCameraTarget.copy(targetPosition);
-      prevLookAtPoint.copy(selectedCar.position);
-    } else {
-      // Use variable smoothing based on speed to prevent jerkiness
-      // Slower speeds = more responsive camera
-      // Higher speeds = more stable camera
-      const speedFactor = Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
-
-      // More aggressive smoothing to reduce shake - reduce the max value
-      const dynamicLerpFactor = THREE.MathUtils.lerp(
-        cameraLerpFactor * 1.2,
-        cameraLerpFactor * 0.3, // More smoothing at high speeds
-        speedFactor
-      );
-
-      // Use exponential smoothing to follow the car
-      prevCameraTarget.lerp(targetPosition, dynamicLerpFactor);
-      camera.position.copy(prevCameraTarget);
-    }
-
-    // Calculate a smooth turning offset that gradually changes
-    // This prevents camera jerks when turning starts/stops
-    let targetTurnInfluence = 0;
-
-    // Calculate turn influence based on steering input AND actual car rotation rate
-    // to make it more realistic and smooth
-    if (carControls.left) {
-      targetTurnInfluence = (Math.abs(carSpeed) / carMaxSpeed) * 15; // Reduced from 20
-    } else if (carControls.right) {
-      targetTurnInfluence = (-Math.abs(carSpeed) / carMaxSpeed) * 15; // Reduced from 20
-    }
-
-    // Smooth the turn influence transition - key to reducing camera shake
-    currentTurnInfluence = THREE.MathUtils.lerp(
-      currentTurnInfluence,
-      targetTurnInfluence,
-      0.05 // Very gentle transition for turn influence
-    );
-
-    // Create a look-at point that smoothly tracks in front of the car
-    const lookAtTarget = selectedCar.position
-      .clone()
-      .add(
-        new THREE.Vector3(
-          currentTurnInfluence,
-          thirdPersonCameraHeight * 0.2,
-          0
-        )
-      );
-
-    // Smooth the look-at point transition
-    if (instant || prevLookAtPoint.lengthSq() === 0) {
-      prevLookAtPoint.copy(lookAtTarget);
-    } else {
-      // Use slightly faster lerp for look-at to keep focus on car
-      // But still slow enough to reduce shake
-      prevLookAtPoint.lerp(
-        lookAtTarget,
-        Math.min(cameraLerpFactor * 1.2, 0.15)
-      );
-    }
-
-    camera.lookAt(prevLookAtPoint);
-
-    // Apply a smooth camera tilt during turns with proper damping
-    // Calculate target tilt based on turn influence for consistency
-    const tiltFactor =
-      Math.abs(carSpeed) > 2
-        ? 0.02 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1)
-        : 0;
-    const newTargetRotationZ = -currentTurnInfluence * 0.001 * tiltFactor;
-
-    // Even smoother damping for camera rotation
-    targetCameraRotationZ = THREE.MathUtils.lerp(
-      targetCameraRotationZ,
-      newTargetRotationZ,
-      0.05 // Gentle transition for tilt
-    );
-
-    // Apply smooth tilt transition
-    camera.rotation.z = THREE.MathUtils.lerp(
-      camera.rotation.z,
-      targetCameraRotationZ,
-      0.03
-    );
+    console.log("updateCarFollowCamera function is now handled in driving.js");
   }
   function handleInteraction(mesh, isMouseClicked) {
     if (isMouseClicked) {
@@ -991,19 +527,13 @@ async function init() {
       const targetObject = retrieveObjectWithUUID(original_uuid);
 
       if (targetObject) {
-        console.log("TARGET OBJECT: ", targetObject);
-
-        // Check if it's one of our cars
+        console.log("TARGET OBJECT: ", targetObject); // Check if it's one of our cars
         if (cars.includes(targetObject)) {
           console.log("Car clicked:", targetObject.name);
 
           // Ask user if they want to drive this car
           if (confirm(`Do you want to drive the ${targetObject.name}?`)) {
-            // Force reset of any existing state that might interfere with car selection
-            INTERSECTED = null;
-            removeOutline();
-
-            // Ensure clean car entry
+            // Redirect to driving page with the selected car
             enterCarDriving(targetObject);
             return;
           }
@@ -1162,10 +692,8 @@ async function init() {
       pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
       pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-      // Check for intersection when pointer moves and not in driving mode
-      if (!isDriving) {
-        checkIntersection(RayCastObjects);
-      }
+      // Always check for intersection when pointer moves (since driving is in another page)
+      checkIntersection(RayCastObjects);
     }
   }
 
@@ -1300,36 +828,9 @@ function loadGLTFModel(gltfPath) {
 
 // getPlane function has been removed as it's no longer used
 
-// Add HTML for driving UI
+// No need for driving UI setup since it's now in driving.html/driving.js
 document.addEventListener("DOMContentLoaded", function () {
-  // Add a container for driving instructions if it doesn't exist
-  if (!document.getElementById("drivingInstructions")) {
-    const drivingInstructions = document.createElement("div");
-    drivingInstructions.id = "drivingInstructions";
-    drivingInstructions.style.display = "none";
-    drivingInstructions.style.position = "absolute";
-    drivingInstructions.style.bottom = "20px";
-    drivingInstructions.style.left = "20px";
-    drivingInstructions.style.backgroundColor = "rgba(0,0,0,0.7)";
-    drivingInstructions.style.color = "white";
-    drivingInstructions.style.padding = "15px";
-    drivingInstructions.style.borderRadius = "5px";
-    drivingInstructions.style.fontFamily = "Arial, sans-serif";
-    drivingInstructions.innerHTML = `
-      <h3 style="margin-top: 0">Car Controls:</h3>
-      <div style="display: grid; grid-template-columns: auto auto; gap: 5px;">
-        <div>W/↑:</div><div>Accelerate</div>
-        <div>S/↓:</div><div>Reverse</div>
-        <div>A/←:</div><div>Turn Left</div>
-        <div>D/→:</div><div>Turn Right</div>
-        <div>Space:</div><div>Brake</div>
-        <div>P/Esc:</div><div>Exit Vehicle</div>
-      </div>
-      <div id="current-car-name" style="margin-top: 10px; font-style: italic;"></div>
-    `;
-
-    document.body.appendChild(drivingInstructions);
-  }
+  // Initialize any main page UI elements here if needed
 });
 
 let scene = init();

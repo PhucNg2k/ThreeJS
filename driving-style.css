@@ -1,0 +1,180 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background-color: #000;
+}
+
+#webgl {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Loading Screen */
+#loadingScreen {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    transition: opacity 0.5s;
+}
+
+.loading-container {
+    background-color: rgba(20, 20, 20, 0.8);
+    border-radius: 10px;
+    padding: 30px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0, 150, 255, 0.5);
+    border: 1px solid rgba(0, 150, 255, 0.3);
+    max-width: 80%;
+}
+
+.loading-text {
+    color: #fff;
+    font-size: 24px;
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+
+.progress-bar-container {
+    width: 300px;
+    height: 10px;
+    background-color: #333;
+    border-radius: 5px;
+    margin: 0 auto 15px auto;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(to right, #00a1ff, #00ff8f);
+    transition: width 0.3s ease;
+    border-radius: 5px;
+}
+
+.loading-info {
+    color: #aaa;
+    font-size: 14px;
+}
+
+#drivingUI {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+    padding: 15px;
+    z-index: 100;
+    pointer-events: auto;
+}
+
+#speedometer {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 20px;
+    border-radius: 50%;
+    width: 100px;
+    height: 100px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+.speed-value {
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.speed-unit {
+    font-size: 14px;
+}
+
+#car-info {
+    margin-bottom: 15px;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.controls-title {
+    margin-bottom: 10px;
+    font-weight: bold;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 5px;
+}
+
+.control-row {
+    display: grid;
+    grid-template-columns: 80px auto;
+    margin-bottom: 5px;
+}
+
+.control-row span:first-child {
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 2px 5px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+#carSettings {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 15px;
+    border-radius: 8px;
+    max-width: 300px;
+    z-index: 100;
+}
+
+#carSettings h3 {
+    margin-top: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 10px;
+}
+
+#exitButton {
+    display: block;
+    margin-top: 15px;
+    background-color: #ff3a3a;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+
+#exitButton:hover {
+    background-color: #ff0000;
+}
+
+/* Animations */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.speed-value.high-speed {
+    color: #ff3a3a;
+    animation: pulse 0.5s infinite;
+}
