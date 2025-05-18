@@ -170,7 +170,7 @@ async function init() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // Load cars and add them to our cars array for tracking
-  const carObj1 = await loadGLTFModel("mclaren/draco/chassis.gltf");
+  const mclarenCar = await loadGLTFModel("mclaren/draco/chassis.gltf");
 
   // Load Aspark Owl car model
   const asparkCar = await loadGLTFModel(
@@ -195,17 +195,17 @@ async function init() {
   const wheelBackRight1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
   // Scale wheels appropriately - reduced wheel scale to match chassis
   const wheelScale = 1; // Reduced from 20 to make wheels proportional to chassis
-  const wheels1 = [
+  const wheels = [
     wheelFrontLeft1,
     wheelFrontRight1,
     wheelBackLeft1,
     wheelBackRight1,
   ];
 
-  wheels1.forEach((wheel) => {
+  wheels.forEach((wheel) => {
     wheel.scale.set(wheelScale, wheelScale, wheelScale);
     wheel.castShadow = true;
-    carObj1.add(wheel);
+    mclarenCar.add(wheel);
   });
 
   wheelFrontLeft1.position.set(
@@ -230,13 +230,13 @@ async function init() {
   ); // Position wheels for Car 2
 
   // Keep track of wheels in the car objects for rotation during driving
-  carObj1.userData.wheels = wheels1;
+  mclarenCar.userData.wheels = wheels;
 
   // Setup car physics properties
-  carObj1.name = "MclarenDraco";
-  carObj1.userData.velocity = new THREE.Vector3();
-  carObj1.userData.acceleration = new THREE.Vector3();
-  carObj1.userData.direction = new THREE.Vector3(0, 0, 1);
+  mclarenCar.name = "MclarenDraco";
+  mclarenCar.userData.velocity = new THREE.Vector3();
+  mclarenCar.userData.acceleration = new THREE.Vector3();
+  mclarenCar.userData.direction = new THREE.Vector3(0, 0, 1);
 
   // Setup Aspark Owl physics properties
   asparkCar.userData.velocity = new THREE.Vector3();
@@ -252,30 +252,30 @@ async function init() {
   ferrariCar.userData.direction = new THREE.Vector3(0, 0, 1);
 
   // Scale the McLaren models appropriately - significantly increased to make chassis larger relative to wheels
-  carObj1.scale.set(150, 150, 150);
+  mclarenCar.scale.set(150, 150, 150);
   // Scale the Aspark model to match the size of the other cars
   asparkCar.scale.set(150, 150, 150);
   bugattiCar.scale.set(150, 150, 150);
   ferrariCar.scale.set(14000, 14000, 14000);
 
   // Get car size after scaling
-  let carSize = new THREE.Box3().setFromObject(carObj1);
+  let carSize = new THREE.Box3().setFromObject(mclarenCar);
   let carWidth = carSize.max.x - carSize.min.x;
   let carHeight = carSize.max.y - carSize.min.y;
 
   // Position cars
-  carObj1.position.set(0, 0, 0);
+  mclarenCar.position.set(0, 0, 0);
   asparkCar.position.set(carWidth + 500, 0, 0);
   bugattiCar.position.set(-(carWidth + 500), 0, 0);
   ferrariCar.position.set(-(carWidth + 1000), 0, 0);
 
   // Rotate cars to face forward (adjust as needed for the McLaren model)
-  carObj1.rotation.y = Math.PI;
+  mclarenCar.rotation.y = Math.PI;
   asparkCar.rotation.y = Math.PI; // Adjust as needed for the Aspark model
   bugattiCar.rotation.y = Math.PI;
   ferrariCar.rotation.y = Math.PI;
 
-  carObj1.traverse((child) => {
+  mclarenCar.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = false;
@@ -303,13 +303,13 @@ async function init() {
     }
   });
 
-  scene.add(carObj1);
+  scene.add(mclarenCar);
   scene.add(asparkCar); // Add the Aspark car to the scene
   scene.add(bugattiCar); // Add the Bugatti car to the scene
   scene.add(ferrariCar); // Add the Ferrari car to the scene
 
   // Add cars to array for tracking and selection
-  cars.push(carObj1);
+  cars.push(mclarenCar);
   cars.push(asparkCar); // Add the Aspark car to the cars array
   cars.push(bugattiCar); // Add the Bugatti car to the cars array
   cars.push(ferrariCar); // Add the Ferrari car to the cars array
@@ -365,7 +365,7 @@ async function init() {
   groundTexture.needsUpdate = true;
 
   scene.add(plane);
-  carObj1.position.y = 10; // Raise car slightly above ground level
+  mclarenCar.position.y = 10; // Raise car slightly above ground level
   asparkCar.position.y = 5; // Raise Aspark car slightly above ground level
   bugattiCar.position.y = 5; // Raise Bugatti car slightly above ground level
   ferrariCar.position.y = 5; // Raise Ferrari car slightly above ground level
