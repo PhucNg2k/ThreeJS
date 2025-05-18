@@ -60,6 +60,9 @@ async function init() {
     1.0,
     10000
   );
+  camera.layers.enable(0); // Default layer
+  camera.layers.enable(1); // Include helpers
+
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(window.devicePixelRatio);
 
@@ -73,7 +76,10 @@ async function init() {
     (error) => console.error("Error Loading Cube Map!", error)
   );
   scene.background = new THREE.Color(0x4287f5);
-  scene.add(new THREE.AxesHelper(1000));
+  let axesHelper = new THREE.AxesHelper(1000);
+  axesHelper.layers.set(1);
+  scene.add(axesHelper);
+
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
   scene.add(ambientLight);
 
@@ -93,7 +99,11 @@ async function init() {
   orthoCamera = new THREE.OrthographicCamera(-width, width, height, -height, 1, 2000);
   orthoCamera.position.set(0, 1000, 0);
   orthoCamera.lookAt(0, 0, 0);
+  orthoCamera.layers.enable(0);  // Default objects
+  orthoCamera.layers.disable(1); // Hide helpers
+
   scene.add(orthoCamera);
+
 
   const controls = new PointerLockControls(camera, renderer.domElement);
   const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
@@ -104,10 +114,14 @@ async function init() {
   }
 
   
-
+  let cameraFlyMode = 'fly';
   // Updated key controls for both walking and driving
   const onKeyDown = (event) => {
     if (controls.isLocked) {
+      if (event.code == "KeyH") {
+        cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
+      }
+      
       if (event.code === "KeyP") {
         controls.unlock();
 
@@ -307,8 +321,9 @@ async function init() {
   directionalLight.shadow.camera.top = 1000;
   directionalLight.shadow.camera.bottom = -1000;
   scene.add(directionalLight);
-  const helper = new THREE.DirectionalLightHelper(directionalLight, 5);
-  scene.add(helper);
+  let helper = new THREE.DirectionalLightHelper(directionalLight, 5);
+  helper.layers.set(1)
+  //scene.add(helper);
 
   const planeGeometry = new THREE.PlaneGeometry(5000, 5000);
   const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
@@ -482,6 +497,7 @@ UNLOCK EVENT:
 
         const boxHelper = new THREE.BoxHelper(colliderBox, 0xffff00);
         colliderBox.userData.helper = boxHelper;
+        boxHelper.layers.set(1);
         scene.add(boxHelper);
       }
     }
@@ -954,15 +970,36 @@ UNLOCK EVENT:
     const moveSpeed = 500;
     const delta = Math.min(clock.getDelta(), 0.1);
     const speed = delta * moveSpeed;
-    const direction = new THREE.Vector3();
+
+    // Get direction and right vector once
+    const forward = new THREE.Vector3();
     const right = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    direction.normalize();
-    right.crossVectors(camera.up, direction).normalize();
-    if (keys.KeyW) camera.position.addScaledVector(direction, speed);
-    if (keys.KeyS) camera.position.addScaledVector(direction, -speed);
-    if (keys.KeyA) camera.position.addScaledVector(right, speed);
-    if (keys.KeyD) camera.position.addScaledVector(right, -speed);
+    const up = new THREE.Vector3(0, 1, 0);
+
+    camera.getWorldDirection(forward).normalize();
+    right.crossVectors(up, forward).normalize();
+
+    // Project movement vectors to XZ plane if in 'strict' mode
+    if (cameraFlyMode === 'strict') {
+      forward.y = 0;
+      right.y = 0;
+      forward.normalize();
+      right.normalize();
+    }
+
+    const movement = new THREE.Vector3();
+
+    if (keys.KeyW) movement.add(forward);
+    if (keys.KeyS) movement.addScaledVector(forward, -1);
+    if (keys.KeyA) movement.add(right);
+    if (keys.KeyD) movement.addScaledVector(right, -1);
+
+    movement.normalize().multiplyScalar(speed);
+    camera.position.add(movement);
+
+    if (cameraFlyMode === 'strict') {
+      camera.position.y = carHeight - 50;
+    }
   }
 
   function updateCameraPoint() {
@@ -984,7 +1021,7 @@ UNLOCK EVENT:
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
-    //orthoCamera.updateProjectionMatrix() 
+    orthoCamera.updateProjectionMatrix() 
     render();
   }
 
