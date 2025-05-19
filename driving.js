@@ -33,7 +33,7 @@ let carAcceleration = 0.2;
 let carDeceleration = 0.1;
 let carTurnSpeed = 0.03;
 let thirdPersonCameraDistance = 300;
-let thirdPersonCameraHeight = 150;
+let thirdPersonCameraHeight = 350;
 let cameraLerpFactor = 0.1;
 let carControls = {
   forward: false,
@@ -969,66 +969,87 @@ function updateCarFollowCamera(instant = false) {
   } else {
     // Calculate dynamic smoothing factor based on speed
     const speedFactor = Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
-    const dynamicLerpFactor = THREE.MathUtils.lerp(
-      cameraLerpFactor * 1.2, // More responsive at low speeds
-      cameraLerpFactor * 0.3, // More stable at high speeds
-      speedFactor
-    );
+
+    // Use a more stable lerp factor for high speeds and turning
+    let dynamicLerpFactor;
+    const isTurning = carControls.left || carControls.right;
+    if (isTurning && speedFactor > 0.5) {
+      // More stable when turning at high speeds
+      dynamicLerpFactor = cameraLerpFactor * 0.2;
+    } else {
+      dynamicLerpFactor = THREE.MathUtils.lerp(
+        cameraLerpFactor * 0.8, // More responsive at low speeds
+        cameraLerpFactor * 0.2, // More stable at high speeds
+        speedFactor
+      );
+    }
 
     // Apply smooth interpolation to camera movement
     prevCameraTarget.lerp(targetPosition, dynamicLerpFactor);
     camera.position.copy(prevCameraTarget);
   }
 
-  // Calculate turn influence for camera
+  // Calculate turn influence for camera with reduced intensity
   let targetTurnInfluence = 0;
   if (carControls.left) {
-    targetTurnInfluence = (Math.abs(carSpeed) / carMaxSpeed) * 15;
+    targetTurnInfluence = (Math.abs(carSpeed) / carMaxSpeed) * 10; // Reduced from 15
   } else if (carControls.right) {
-    targetTurnInfluence = (-Math.abs(carSpeed) / carMaxSpeed) * 15;
+    targetTurnInfluence = (-Math.abs(carSpeed) / carMaxSpeed) * 10; // Reduced from 15
   }
 
-  // Smooth the turn influence
+  // Smooth the turn influence with a more gradual transition
   currentTurnInfluence = THREE.MathUtils.lerp(
     currentTurnInfluence,
     targetTurnInfluence,
-    0.05 // Gentle transition
+    0.03 // More gentle transition (reduced from 0.05)
   );
 
-  // Create dynamic look-at target
+  // Create dynamic look-at target with dampened side movement
   const lookAtTarget = selectedCar.position
     .clone()
     .add(
-      new THREE.Vector3(currentTurnInfluence, thirdPersonCameraHeight * 0.2, 0)
-    );
-
-  // Smooth the look-at transition
+      new THREE.Vector3(
+        currentTurnInfluence * 0.8,
+        thirdPersonCameraHeight * 0.2,
+        0
+      )
+    ); // Smooth the look-at transition with a more stable factor
   if (instant || prevLookAtPoint.lengthSq() === 0) {
     prevLookAtPoint.copy(lookAtTarget);
   } else {
-    prevLookAtPoint.lerp(lookAtTarget, Math.min(cameraLerpFactor * 1.2, 0.15));
+    // Get speed factor again for look-at calculations
+    const speedFactor = Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
+
+    // Smoother camera when turning at high speeds
+    const isTurning = carControls.left || carControls.right;
+    const lookAtLerpFactor =
+      isTurning && speedFactor > 0.6
+        ? 0.08 // Very stable for high-speed turns
+        : Math.min(cameraLerpFactor * 0.8, 0.12); // More stable overall
+
+    prevLookAtPoint.lerp(lookAtTarget, lookAtLerpFactor);
   }
 
   // Point camera at smooth target
   camera.lookAt(prevLookAtPoint);
 
-  // Apply camera tilt during turns
+  // Apply reduced camera tilt during turns
   const tiltFactor =
     Math.abs(carSpeed) > 2
-      ? 0.02 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1)
+      ? 0.015 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1) // Reduced from 0.02
       : 0;
-  const newTargetRotationZ = -currentTurnInfluence * 0.001 * tiltFactor;
+  const newTargetRotationZ = -currentTurnInfluence * 0.0008 * tiltFactor; // Reduced from 0.001
 
-  // Smooth rotation transition
+  // Extra smooth rotation transition
   targetCameraRotationZ = THREE.MathUtils.lerp(
     targetCameraRotationZ,
     newTargetRotationZ,
-    0.05
+    0.03 // More gentle transition (reduced from 0.05)
   );
   camera.rotation.z = THREE.MathUtils.lerp(
     camera.rotation.z,
     targetCameraRotationZ,
-    0.03
+    0.02 // More gentle rotation (reduced from 0.03)
   );
 }
 
