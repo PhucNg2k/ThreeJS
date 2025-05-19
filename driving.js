@@ -11,6 +11,20 @@ import GUI from "lil-gui";
 let cars = [];
 let selectedCar = null;
 
+// Audio player for background music
+let musicEnabled = false;
+let backgroundMusic = null;
+let musicVolume = 0.7; // Default volume (0-1)
+let currentTrackInfo = "No track selected";
+let currentTrackIndex = 0; // Track the current song index
+
+// Available music tracks
+const musicTracks = [
+  { url: "/audio/driving_music_1.mp3", name: "Driving Theme 1" },
+  { url: "/audio/driving_music_2.mp3", name: "Driving Theme 2" },
+  { url: "/audio/driving_music_3.mp3", name: "Driving Theme 3" },
+];
+
 // Car driving variables
 let isDriving = true;
 let carSpeed = 0;
@@ -100,6 +114,9 @@ async function init() {
   scene.background = new THREE.Color(0x4287f5); // Blue sky
   scene.add(new THREE.AxesHelper(100)); // Helper for orientation
 
+  // Initialize audio system
+  setupAudio();
+
   // Add lighting
   setupLighting();
 
@@ -140,6 +157,234 @@ async function init() {
   animate();
 }
 
+function setupAudio() {
+  try {
+    // Initialize the audio listener and add it to the camera
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+
+    // Create a global audio source
+    backgroundMusic = new THREE.Audio(listener);
+
+    // Load a sound and set it as the Audio object's buffer
+    const audioLoader = new THREE.AudioLoader();
+
+    // Start with the first track (index 0) instead of random
+    const selectedTrack = musicTracks[currentTrackIndex];
+
+    // Display the selected track name
+    currentTrackInfo = selectedTrack.name;
+    document.getElementById("currentTrack").textContent = currentTrackInfo;
+
+    // Load and set up the audio
+    audioLoader.load(
+      selectedTrack.url,
+      function (buffer) {
+        backgroundMusic.setBuffer(buffer);
+        backgroundMusic.setLoop(true);
+        backgroundMusic.setVolume(musicVolume);
+
+        // Enable all music control buttons
+        document.getElementById("toggleMusic").disabled = false;
+        document.getElementById("prevTrack").disabled = false;
+        document.getElementById("nextTrack").disabled = false;
+
+        // Do not autoplay - wait for user interaction
+        console.log("Music loaded: " + selectedTrack.name);
+      },
+      function (xhr) {
+        // Progress callback
+        if (xhr.lengthComputable) {
+          console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+        }
+      },
+      function (err) {
+        // Error callback
+        handleAudioLoadError(err, selectedTrack.name);
+      }
+    );
+
+    // Set up button event listeners
+    document
+      .getElementById("toggleMusic")
+      .addEventListener("click", toggleMusic);
+    document
+      .getElementById("prevTrack")
+      .addEventListener("click", () => changeTrack("prev"));
+    document
+      .getElementById("nextTrack")
+      .addEventListener("click", () => changeTrack("next"));
+    document
+      .getElementById("volumeSlider")
+      .addEventListener("input", updateVolume);
+  } catch (error) {
+    console.error("Error setting up audio system:", error);
+    document.getElementById("currentTrack").textContent =
+      "Audio system unavailable";
+    document.getElementById("toggleMusic").disabled = true;
+    document.getElementById("prevTrack").disabled = true;
+    document.getElementById("nextTrack").disabled = true;
+  }
+}
+
+function handleAudioLoadError(error, trackName) {
+  console.error(`Error loading track "${trackName}":`, error);
+  document.getElementById(
+    "currentTrack"
+  ).innerHTML = `<span style="color:#ff3a3a">Audio file missing</span><br>
+     <span style="font-size:10px">See /audio/README.md</span>`;
+
+  // Disable all music control buttons
+  const toggleMusicBtn = document.getElementById("toggleMusic");
+  toggleMusicBtn.disabled = true;
+  toggleMusicBtn.textContent = "Audio Unavailable";
+  toggleMusicBtn.style.backgroundColor = "#666";
+
+  document.getElementById("prevTrack").disabled = true;
+  document.getElementById("nextTrack").disabled = true;
+
+  // Show alert with instructions on first error only
+  if (!window.audioErrorShown) {
+    window.audioErrorShown = true;
+    setTimeout(() => {
+      alert(
+        "Audio files are missing!\n\nTo enable music while driving, please add MP3 files to the audio folder. See the README.md file in that folder for instructions."
+      );
+    }, 1000);
+  }
+}
+
+function toggleMusic() {
+  const toggleBtn = document.getElementById("toggleMusic");
+
+  if (toggleBtn.disabled) {
+    return; // Do nothing if the button is disabled
+  }
+
+  if (!musicEnabled) {
+    // Start music
+    if (backgroundMusic && backgroundMusic.buffer) {
+      try {
+        backgroundMusic.play();
+        musicEnabled = true;
+        toggleBtn.textContent = "Pause Music";
+        toggleBtn.classList.add("playing");
+      } catch (error) {
+        console.error("Error playing music:", error);
+        alert(
+          "There was an error playing the music. This might be due to the browser's autoplay policy. Try clicking the play button again."
+        );
+      }
+    } else {
+      console.error("Music not loaded yet");
+      document.getElementById("currentTrack").textContent =
+        "Music loading... please wait";
+    }
+  } else {
+    // Pause music
+    if (backgroundMusic) {
+      backgroundMusic.pause();
+      musicEnabled = false;
+      toggleBtn.textContent = "Play Music";
+      toggleBtn.classList.remove("playing");
+    }
+  }
+}
+
+function updateVolume() {
+  const volumeSlider = document.getElementById("volumeSlider");
+  musicVolume = volumeSlider.value / 100;
+
+  if (backgroundMusic) {
+    backgroundMusic.setVolume(musicVolume);
+  }
+}
+
+// Function to change tracks (next or previous)
+function changeTrack(direction) {
+  // Calculate the new track index
+  const wasPlaying = musicEnabled;
+  let newIndex = currentTrackIndex;
+
+  if (direction === "next") {
+    newIndex = (currentTrackIndex + 1) % musicTracks.length;
+  } else if (direction === "prev") {
+    newIndex =
+      (currentTrackIndex - 1 + musicTracks.length) % musicTracks.length;
+  }
+
+  // Only change if it's a different track
+  if (newIndex === currentTrackIndex) return;
+
+  // If music was playing, pause it first
+  if (musicEnabled && backgroundMusic) {
+    backgroundMusic.pause();
+  }
+
+  // Update the current track index
+  currentTrackIndex = newIndex;
+  const selectedTrack = musicTracks[currentTrackIndex];
+
+  // Update the UI
+  currentTrackInfo = selectedTrack.name;
+  document.getElementById("currentTrack").textContent = currentTrackInfo;
+
+  // Load the new track
+  const audioLoader = new THREE.AudioLoader();
+
+  // Show loading indicator
+  document.getElementById(
+    "currentTrack"
+  ).textContent = `Loading: ${selectedTrack.name}...`;
+
+  // Temporarily disable buttons
+  document.getElementById("toggleMusic").disabled = true;
+  document.getElementById("prevTrack").disabled = true;
+  document.getElementById("nextTrack").disabled = true;
+
+  // Load the new audio
+  audioLoader.load(
+    selectedTrack.url,
+    function (buffer) {
+      backgroundMusic.setBuffer(buffer);
+      backgroundMusic.setLoop(true);
+      backgroundMusic.setVolume(musicVolume);
+
+      // Re-enable buttons
+      document.getElementById("toggleMusic").disabled = false;
+      document.getElementById("prevTrack").disabled = false;
+      document.getElementById("nextTrack").disabled = false;
+
+      // Update the UI
+      document.getElementById("currentTrack").textContent = selectedTrack.name;
+
+      // If music was playing before, auto-play the new track
+      if (wasPlaying) {
+        backgroundMusic.play();
+        musicEnabled = true;
+        document.getElementById("toggleMusic").textContent = "Pause Music";
+        document.getElementById("toggleMusic").classList.add("playing");
+      }
+
+      console.log(`Changed to track: ${selectedTrack.name}`);
+    },
+    function (xhr) {
+      // Progress callback
+      if (xhr.lengthComputable) {
+        console.log(
+          `Loading ${selectedTrack.name}: ${Math.round(
+            (xhr.loaded / xhr.total) * 100
+          )}% complete`
+        );
+      }
+    },
+    function (error) {
+      // Error callback
+      handleAudioLoadError(error, selectedTrack.name);
+    }
+  );
+}
+
 function setupLighting() {
   // Add ambient light
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
@@ -176,8 +421,8 @@ function setupLighting() {
 
 function loadTexture(path) {
   return new Promise((resolve, reject) => {
-    // Fix path to look in public directory
-    const fullPath = path.startsWith("/") ? path : `/public/${path}`;
+    // Use path as-is since files in public are served at root
+    const fullPath = path.startsWith("/") ? path : `/${path}`;
     console.log(`Loading texture from: ${fullPath}`);
 
     new THREE.TextureLoader(loadingManager).load(
@@ -444,6 +689,44 @@ function onKeyDown(event) {
     case "Space":
       carControls.brake = true;
       break;
+    case "KeyM":
+      // Toggle music with M key
+      toggleMusic();
+      break;
+    case "KeyP":
+      // Also toggle music with P key
+      toggleMusic();
+      break;
+    case "KeyN":
+      // Next track with N key
+      if (!document.getElementById("nextTrack").disabled) {
+        changeTrack("next");
+      }
+      break;
+    case "KeyB":
+      // Previous track with B key
+      if (!document.getElementById("prevTrack").disabled) {
+        changeTrack("prev");
+      }
+      break;
+    case "Equal": // + key
+      // Increase volume
+      const increaseVolumeSlider = document.getElementById("volumeSlider");
+      increaseVolumeSlider.value = Math.min(
+        100,
+        parseInt(increaseVolumeSlider.value) + 10
+      );
+      updateVolume();
+      break;
+    case "Minus": // - key
+      // Decrease volume
+      const decreaseVolumeSlider = document.getElementById("volumeSlider");
+      decreaseVolumeSlider.value = Math.max(
+        0,
+        parseInt(decreaseVolumeSlider.value) - 10
+      );
+      updateVolume();
+      break;
     case "Escape":
       exitDrivingMode();
       break;
@@ -527,9 +810,58 @@ function createSettingsGUI() {
       cameraLerpFactor = value;
     });
 
+  const audioFolder = settingsGui.addFolder("Audio");
+  audioFolder.add({ Music: musicEnabled }, "Music").onChange((value) => {
+    if (value !== musicEnabled) {
+      toggleMusic();
+    }
+  });
+  audioFolder
+    .add({ Volume: musicVolume * 100 }, "Volume", 0, 100, 1)
+    .onChange((value) => {
+      musicVolume = value / 100;
+      if (backgroundMusic) {
+        backgroundMusic.setVolume(musicVolume);
+      }
+      // Also update the slider in the music player
+      document.getElementById("volumeSlider").value = value;
+    });
+  audioFolder.add(
+    {
+      "Current Track": () => {
+        alert(`Now Playing: ${currentTrackInfo}`);
+      },
+    },
+    "Current Track"
+  );
+
+  // Add Next/Previous track controls to the GUI
+  audioFolder.add(
+    {
+      "Next Track": () => {
+        if (!document.getElementById("nextTrack").disabled) {
+          changeTrack("next");
+        }
+      },
+    },
+    "Next Track"
+  );
+
+  audioFolder.add(
+    {
+      "Previous Track": () => {
+        if (!document.getElementById("prevTrack").disabled) {
+          changeTrack("prev");
+        }
+      },
+    },
+    "Previous Track"
+  );
+
   // Open folders by default
   carFolder.open();
   cameraFolder.open();
+  audioFolder.open();
 }
 
 function updateCarMovement() {
