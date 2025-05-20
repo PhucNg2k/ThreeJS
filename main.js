@@ -143,6 +143,9 @@ UNLOCK EVENT:
   controls.addEventListener("lock", (event) => {
     console.log("(LOCK) EVENT")
     startPanel.style.display = "none";
+
+    let carOptionPanel = document.getElementById("carOptionPanel");
+    carOptionPanel.style.display = "none"
   });
 
   controls.addEventListener("unlock", (event) => {
@@ -395,13 +398,18 @@ UNLOCK EVENT:
   window.addEventListener("mousedown", (event) => {
     console.log("MOUSE DOWN EVENT")
     const guiPanel = document.getElementById("objectInfoPanel");
-    const clickedInsideGUI = guiPanel.contains(event.target);
-    if (clickedInsideGUI) return;
-
+    const carOptionPanel = document.getElementById("carOptionPanel");
+     const clickedInsideGUI = (guiPanel && guiPanel.contains(event.target)) || (carOptionPanel && carOptionPanel.contains(event.target));
+    if (clickedInsideGUI) {
+        console.log("Click inside GUI or car option panel, ignoring control lock");
+        return;
+    }
+    
     if (!controls.isLocked) {
       setTimeout(() => {
         controls.lock();
         clearGuiPanel(guiPanel);
+        clearCarOptionPanel(carOptionPanel);
       }, 0);
       return;
     }
@@ -418,14 +426,26 @@ UNLOCK EVENT:
       handleInteraction(INTERSECTED, isMouseClicked);
     } else {
       clearGuiPanel(guiPanel);
+      // Only clear carOptionPanel if no car is selected
+      if (!cars.includes(retrieveObjectWithUUID(RayCastMapping[INTERSECTED?.uuid]))) {
+        clearCarOptionPanel(carOptionPanel);
+      }
       removeOutline();
     }
   });
 
   function clearGuiPanel(guiPanel) {
-        if (guiPanel) {
-            guiPanel.style.display = "none";
-        }
+    if (guiPanel) {
+      console.log("Clearing GUI panel");
+      guiPanel.style.display = "none";
+    }
+  }
+
+  function clearCarOptionPanel(carOptionPanel) {
+    if (carOptionPanel) {
+      console.log("Clearing car option panel");
+      carOptionPanel.style.display = "none";
+    }
   }
 
   window.addEventListener("mouseup", () => {
@@ -562,6 +582,66 @@ UNLOCK EVENT:
       console.error("Car not found in cars array:", car.name);
     }
   } 
+
+
+  function optionGateway(targetObject) {
+    if (!cars.includes(targetObject)) return;
+
+    console.log("Car clicked:", targetObject.name);
+
+    let carOptionPanel = document.getElementById("carOptionPanel");
+    let carOptionTitle = document.getElementById("carOptionTitle");
+    let viewButton = document.getElementById("viewCarButton");
+    let driveButton = document.getElementById("driveCarButton");
+    let cancelButton = document.getElementById("cancelButton");
+
+    if (!carOptionPanel || !carOptionTitle || !viewButton || !driveButton || !cancelButton) {
+      console.error("Car option panel elements not found");
+      return;
+    }
+
+    // Update panel title with car name
+    carOptionTitle.innerText = `Select Option for ${targetObject.name}`;
+
+    // Clear previous event listeners to prevent duplicates
+    let viewClone = viewButton.cloneNode(true);
+    let driveClone = driveButton.cloneNode(true);
+    let cancelClone = cancelButton.cloneNode(true);
+    viewButton.parentNode.replaceChild(viewClone, viewButton);
+    driveButton.parentNode.replaceChild(driveClone, driveButton);
+    cancelButton.parentNode.replaceChild(cancelClone, cancelButton);
+
+    // Update references to new buttons
+    viewButton = viewClone;
+    driveButton = driveClone;
+    cancelButton = cancelClone;
+
+    // Add event listeners
+    viewButton.addEventListener("click", () => {
+      console.log(`Viewing ${targetObject.name} on podium`);
+      window.location.replace('podium.html');
+      carOptionPanel.style.display = "none";
+    });
+
+    driveButton.addEventListener("click", () => {
+      console.log(`Driving ${targetObject.name}`);
+      enterCarDriving(targetObject);
+      carOptionPanel.style.display = "none";
+    });
+
+    cancelButton.addEventListener("click", () => {
+      console.log("Action cancelled");
+      carOptionPanel.style.display = "none";
+      controls.lock(); // Resume controls
+    });
+
+    // Force display and trigger reflow
+    carOptionPanel.style.display = "none"; // Reset to ensure reflow
+    carOptionPanel.offsetHeight; // Trigger reflow
+    carOptionPanel.style.display = "block";
+    console.log("Car option panel displayed for:", targetObject.name);
+    console.log("Panel: ", carOptionPanel)
+  }
  
   function handleInteraction(mesh, isMouseClicked) {
     if (isMouseClicked) {
@@ -578,17 +658,10 @@ UNLOCK EVENT:
 
       if (targetObject) {
         console.log("TARGET OBJECT: ", targetObject); // Check if it's one of our cars
-        if (cars.includes(targetObject)) {
-          console.log("Car clicked:", targetObject.name);
+        console.log("TARGET OBJECT NAME:", targetObject.name);
+        optionGateway(targetObject);
 
-          // Ask user if they want to drive this car
-          if (confirm(`Do you want to drive the ${targetObject.name}?`)) {
-            // Redirect to driving page with the selected car
-            enterCarDriving(targetObject);
-            return;
-          }
-        }
-
+        console.log("Setting up GUI for:", targetObject);
         setupObjectGUI(targetObject);
       } else {
         console.warn("Original object not found for UUID:", original_uuid);

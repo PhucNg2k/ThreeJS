@@ -1073,7 +1073,7 @@ function animate() {
   updateCarFollowCamera();
 
   // Render scene with post-processing
-  composer.render();
+  renderer.render(scene, camera);
 
   // Update stats
   stats.update();
