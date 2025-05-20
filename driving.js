@@ -463,16 +463,6 @@ function createGroundPlane(groundTexture) {
 async function loadCars() {
   // Load all car models
   try {
-    // McLaren car
-    const mclarenCar = await loadGLTFModel("mclaren/draco/chassis.gltf");
-    mclarenCar.name = "McLaren";
-    setupCarPhysics(mclarenCar);
-
-    // Add wheels to McLaren
-    const wheels = await loadMcLarenWheels();
-    wheels.forEach((wheel) => mclarenCar.add(wheel));
-    mclarenCar.userData.wheels = wheels;
-
     // Aspark Owl car
     const asparkCar = await loadGLTFModel(
       "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf"
@@ -495,30 +485,25 @@ async function loadCars() {
     setupCarPhysics(ferrariCar);
 
     // Scale and position the cars
-    mclarenCar.scale.set(150, 150, 150);
     asparkCar.scale.set(150, 150, 150);
     bugattiCar.scale.set(150, 150, 150);
     ferrariCar.scale.set(14000, 14000, 14000);
 
     // Position the cars next to each other with some spacing
-    mclarenCar.position.set(0, 5, 0);
-    asparkCar.position.set(500, 5, 0);
-    bugattiCar.position.set(1000, 5, 0);
-    ferrariCar.position.set(1500, 5, 0);
+    asparkCar.position.set(0, 5, 0);
+    bugattiCar.position.set(500, 5, 0);
+    ferrariCar.position.set(1000, 5, 0);
 
     // Rotate cars to face forward
-    mclarenCar.rotation.y = Math.PI;
     asparkCar.rotation.y = Math.PI;
     bugattiCar.rotation.y = Math.PI;
     ferrariCar.rotation.y = Math.PI;
 
     // Add cars to scene and array
-    scene.add(mclarenCar);
     scene.add(asparkCar);
     scene.add(bugattiCar);
     scene.add(ferrariCar);
 
-    cars.push(mclarenCar);
     cars.push(asparkCar);
     cars.push(bugattiCar);
     cars.push(ferrariCar);
@@ -541,63 +526,6 @@ function setupCarPhysics(car) {
       child.receiveShadow = false;
     }
   });
-}
-
-async function loadMcLarenWheels() {
-  const wheelScale = 1;
-  try {
-    // Load wheel models
-    const wheelFrontLeft = await loadGLTFModel("mclaren/draco/wheel.gltf");
-    const wheelFrontRight = await loadGLTFModel("mclaren/draco/wheel.gltf");
-    const wheelBackLeft = await loadGLTFModel("mclaren/draco/wheel.gltf");
-    const wheelBackRight = await loadGLTFModel("mclaren/draco/wheel.gltf");
-
-    const wheels = [
-      wheelFrontLeft,
-      wheelFrontRight,
-      wheelBackLeft,
-      wheelBackRight,
-    ];
-
-    // Apply scale and shadows
-    wheels.forEach((wheel) => {
-      wheel.scale.set(wheelScale, wheelScale, wheelScale);
-      wheel.castShadow = true;
-
-      wheel.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-        }
-      });
-    });
-
-    // Position wheels
-    wheelFrontLeft.position.set(
-      0.78 * wheelScale,
-      0.3 * wheelScale,
-      1.25 * wheelScale
-    );
-    wheelFrontRight.position.set(
-      -0.78 * wheelScale,
-      0.3 * wheelScale,
-      1.25 * wheelScale
-    );
-    wheelBackLeft.position.set(
-      0.75 * wheelScale,
-      0.3 * wheelScale,
-      -1.32 * wheelScale
-    );
-    wheelBackRight.position.set(
-      -0.75 * wheelScale,
-      0.3 * wheelScale,
-      -1.32 * wheelScale
-    );
-
-    return wheels;
-  } catch (error) {
-    console.error("Error loading wheels:", error);
-    return [];
-  }
 }
 
 function loadGLTFModel(gltfPath) {
