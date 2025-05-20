@@ -108,10 +108,23 @@ async function init() {
     10000
   );
   camera.updateProjectionMatrix();
-
   // Create scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x4287f5); // Blue sky
+
+  // Create a skybox for urban environment
+  const skyboxLoader = new THREE.CubeTextureLoader();
+  const skyboxTexture = skyboxLoader.load([
+    "/BoxPieces/px.bmp",
+    "/BoxPieces/nx.bmp",
+    "/BoxPieces/py.bmp",
+    "/BoxPieces/ny.bmp",
+    "/BoxPieces/pz.bmp",
+    "/BoxPieces/nz.bmp",
+  ]);
+
+  // Fallback to blue sky if skybox fails to load
+  scene.background = skyboxTexture;
+
   scene.add(new THREE.AxesHelper(100)); // Helper for orientation
 
   // Initialize audio system
@@ -386,26 +399,58 @@ function changeTrack(direction) {
 }
 
 function setupLighting() {
-  // Add ambient light
-  const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+  // Add ambient light - slightly brighter for better visibility in the city
+  const ambientLight = new THREE.AmbientLight(0xffffff, 10);
   scene.add(ambientLight);
 
-  // Add directional light
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(500, 766, -1200);
+  // Add directional light (sun)
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  directionalLight.position.set(500, 1000, -800);
   directionalLight.castShadow = true;
-  directionalLight.shadow.mapSize.width = 1024;
-  directionalLight.shadow.mapSize.height = 1024;
+  directionalLight.shadow.mapSize.width = 2048; // Higher resolution shadows
+  directionalLight.shadow.mapSize.height = 2048;
   directionalLight.shadow.camera.near = 100;
-  directionalLight.shadow.camera.far = 2000;
-  directionalLight.shadow.camera.left = -1000;
-  directionalLight.shadow.camera.right = 1000;
-  directionalLight.shadow.camera.top = 1000;
-  directionalLight.shadow.camera.bottom = -1000;
+  directionalLight.shadow.camera.far = 5000; // Extended shadow distance for city
+  directionalLight.shadow.camera.left = -3000; // Wider shadow camera for city
+  directionalLight.shadow.camera.right = 3000;
+  directionalLight.shadow.camera.top = 3000;
+  directionalLight.shadow.camera.bottom = -3000;
   scene.add(directionalLight);
 
-  // Add spotlight for dramatic lighting
-  const spotLight = new THREE.SpotLight(0xffff00, 10000);
+  // Add multiple street lights for city atmosphere
+  const streetLightPositions = [
+    [500, 200, -500],
+    [-500, 200, -1000],
+    [500, 200, -1500],
+    [-500, 200, -2000],
+    [500, 200, -2500],
+    [-500, 200, -3000],
+    [0, 200, -3500],
+  ];
+
+  streetLightPositions.forEach((position, index) => {
+    // Create street light
+    const streetLight = new THREE.PointLight(0xffffcc, 8000, 800, 2);
+    streetLight.position.set(position[0], position[1], position[2]);
+    streetLight.castShadow = index < 3; // Only first few lights cast shadows for performance
+    if (streetLight.castShadow) {
+      streetLight.shadow.mapSize.width = 512;
+      streetLight.shadow.mapSize.height = 512;
+      streetLight.shadow.camera.near = 10;
+      streetLight.shadow.camera.far = 1000;
+    }
+    scene.add(streetLight);
+
+    // Visual representation of the light source
+    const lightGeometry = new THREE.SphereGeometry(5, 16, 8);
+    const lightMaterial = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+    const lightMesh = new THREE.Mesh(lightGeometry, lightMaterial);
+    lightMesh.position.copy(streetLight.position);
+    scene.add(lightMesh);
+  });
+
+  // Add spotlight for dramatic car lighting - now warmer color
+  const spotLight = new THREE.SpotLight(0xffaa00, 15000);
   spotLight.position.set(500, 800, -1200);
   spotLight.angle = Math.PI / 6;
   spotLight.penumbra = 0.3;
@@ -443,12 +488,13 @@ function loadTexture(path) {
 }
 
 function createGroundPlane(groundTexture) {
-  // Create a large ground plane
+  // Create a large ground plane that looks like a street
   const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
   const planeMaterial = new THREE.MeshStandardMaterial({
     map: groundTexture,
-    roughness: 0.8,
-    metalness: 0.2,
+    roughness: 0.9,
+    metalness: 0.1,
+    color: 0x333333, // Darker color to represent asphalt
   });
   planeMaterial.receiveShadow = true;
 
@@ -458,55 +504,86 @@ function createGroundPlane(groundTexture) {
   plane.receiveShadow = true;
 
   scene.add(plane);
+
+  // Create road markings (simple white lines)
+  const roadMarkingGeometry = new THREE.PlaneGeometry(1000, 30);
+  const roadMarkingMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+  // Center line
+  for (let i = -10; i <= 10; i++) {
+    const marking = new THREE.Mesh(roadMarkingGeometry, roadMarkingMaterial);
+    marking.position.set(0, -4.8, i * 1000);
+    marking.rotation.x = -Math.PI / 2;
+    marking.scale.set(0.05, 1, 1); // Make it thin
+    scene.add(marking);
+  }
 }
 
 async function loadCars() {
   // Load all car models
   try {
-    // Aspark Owl car
-    const asparkCar = await loadGLTFModel(
-      "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf"
+    // Get the selected car ID from URL
+    const urlCarId = parseInt(carId);
+    const carOptions = [
+      {
+        path: "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf",
+        name: "Aspark Owl",
+        scale: [150, 150, 150],
+      },
+      {
+        path: "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf",
+        name: "Bugatti Bolide",
+        scale: [150, 150, 150],
+      },
+      {
+        path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
+        name: "Ferrari Monza SP1",
+        scale: [14000, 14000, 14000],
+      },
+    ];
+
+    // Load NYC Times Square city model
+    console.log("Loading NYC Times Square model...");
+    const nycCity = await loadGLTFModel(
+      "mclaren/city_nyc_times_square/scene.gltf"
     );
-    asparkCar.name = "Aspark Owl";
-    setupCarPhysics(asparkCar);
+    nycCity.name = "NYC Times Square";
 
-    // Bugatti car
-    const bugattiCar = await loadGLTFModel(
-      "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf"
-    );
-    bugattiCar.name = "Bugatti Bolide";
-    setupCarPhysics(bugattiCar);
+    // Scale and position the city model
+    nycCity.scale.set(1500, 1500, 1500);
+    nycCity.position.set(0, -5, -2000); // Position it behind the starting point
 
-    // Ferrari car
-    const ferrariCar = await loadGLTFModel(
-      "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf"
-    );
-    ferrariCar.name = "Ferrari Monza SP1";
-    setupCarPhysics(ferrariCar);
+    // Add city to scene
+    scene.add(nycCity);
+    console.log("NYC Times Square model loaded and added to scene");
 
-    // Scale and position the cars
-    asparkCar.scale.set(150, 150, 150);
-    bugattiCar.scale.set(150, 150, 150);
-    ferrariCar.scale.set(14000, 14000, 14000);
+    // Load all car models but only add the selected one to the scene
+    for (let i = 0; i < carOptions.length; i++) {
+      const carOption = carOptions[i];
+      console.log(`Loading ${carOption.name}...`);
 
-    // Position the cars next to each other with some spacing
-    asparkCar.position.set(0, 5, 0);
-    bugattiCar.position.set(500, 5, 0);
-    ferrariCar.position.set(1000, 5, 0);
+      const car = await loadGLTFModel(carOption.path);
+      car.name = carOption.name;
+      setupCarPhysics(car);
 
-    // Rotate cars to face forward
-    asparkCar.rotation.y = Math.PI;
-    bugattiCar.rotation.y = Math.PI;
-    ferrariCar.rotation.y = Math.PI;
+      // Apply scale
+      car.scale.set(carOption.scale[0], carOption.scale[1], carOption.scale[2]);
 
-    // Add cars to scene and array
-    scene.add(asparkCar);
-    scene.add(bugattiCar);
-    scene.add(ferrariCar);
+      // Position in the center of the scene
+      car.position.set(0, 5, 0);
 
-    cars.push(asparkCar);
-    cars.push(bugattiCar);
-    cars.push(ferrariCar);
+      // Rotate car to face forward
+      car.rotation.y = Math.PI;
+
+      // Add car to array
+      cars.push(car);
+
+      // Only add the selected car (or the first one if no selection) to the scene
+      if (i === (isNaN(urlCarId) ? 0 : urlCarId)) {
+        scene.add(car);
+        console.log(`Added ${car.name} to scene as the selected car`);
+      }
+    }
   } catch (error) {
     console.error("Error loading car models:", error);
   }
@@ -792,6 +869,14 @@ function createSettingsGUI() {
   audioFolder.open();
 }
 
+// Boundary for the city area
+const cityBoundary = {
+  minZ: -4000,
+  maxZ: 500,
+  minX: -2000,
+  maxX: 2000,
+};
+
 function updateCarMovement() {
   if (!selectedCar) return;
 
@@ -821,6 +906,24 @@ function updateCarMovement() {
   // Limit speed
   carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
 
+  // Check if in city area and apply speed regulations
+  const inCityArea = selectedCar.position.z < cityBoundary.minZ + 500;
+  if (inCityArea && Math.abs(carSpeed) > carMaxSpeed * 0.6) {
+    // Apply automatic speed reduction in the city
+    carSpeed *= 0.98;
+
+    // Show city speed warning if going too fast
+    if (Math.abs(carSpeed) > carMaxSpeed * 0.7) {
+      document.getElementById(
+        "current-car-name"
+      ).innerHTML = `${selectedCar.name} <span style="color:red">(Slow down in the city!)</span>`;
+      setTimeout(() => {
+        document.getElementById("current-car-name").textContent =
+          selectedCar.name;
+      }, 2000);
+    }
+  }
+
   // Update speedometer
   updateSpeedometer();
 
@@ -845,11 +948,23 @@ function updateCarMovement() {
   direction.normalize();
   selectedCar.userData.direction.copy(direction);
 
-  // Move car based on direction and speed
+  // Calculate potential new position
   const moveVector = selectedCar.userData.direction
     .clone()
     .multiplyScalar(carSpeed);
-  selectedCar.position.add(moveVector);
+  const potentialNewPosition = selectedCar.position.clone().add(moveVector);
+
+  // Simple city boundary collision detection
+  let collision = false;
+  if (potentialNewPosition.z < cityBoundary.minZ) {
+    collision = true;
+    carSpeed *= -0.5; // Bounce back at reduced speed
+  }
+
+  // If no collision, move the car
+  if (!collision) {
+    selectedCar.position.add(moveVector);
+  }
 
   // Keep car at proper height above ground
   selectedCar.position.y = 5;
