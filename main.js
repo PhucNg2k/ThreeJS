@@ -6,35 +6,56 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { OutlinePass } from "three/addons/postprocessing/OutlinePass.js";
+import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import GUI from "lil-gui";
+
+
 RectAreaLightUniformsLib.init();
 const clock = new THREE.Clock();
 const pointer = new THREE.Vector2();
 let INTERSECTED = null;
 let composer, outlinePass;
-let SceneObject = {};
+
+
+let scene ,camera, orthoCamera, minimapRenderer;
+let cameraFlyMode = 'fly';
+let outlineMode = false;
 
 // Car array for tracking cars in the scene
 let cars = [];
 
 async function init() {
+
+  minimapRenderer = new THREE.WebGLRenderer({ alpha: true, canvas: document.getElementById("minimapCanvas") });
+  minimapRenderer.setPixelRatio(window.devicePixelRatio);
+  minimapRenderer.setClearColor(0x000000, 0); // transparent background
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   const stats = new Stats();
   document.getElementById("webgl").appendChild(stats.dom);
   document.getElementById("webgl").appendChild(renderer.domElement);
-  const camera = new THREE.PerspectiveCamera(
+  
+  camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
     1.0,
     10000
   );
   camera.updateProjectionMatrix();
+  camera.layers.enable(0); // Default layer
+  camera.layers.enable(1); // Include helpers
+  
   renderer.setPixelRatio(window.devicePixelRatio);
-  const scene = new THREE.Scene();
+  
+  scene = new THREE.Scene();
   scene.background = new THREE.Color(0x4287f5);
-  scene.add(new THREE.AxesHelper(1000));
+
+  let axesHelper = new THREE.AxesHelper(1000);
+  axesHelper.layers.set(1);
+  scene.add(axesHelper);
+
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
   scene.add(ambientLight);
 
@@ -48,6 +69,16 @@ async function init() {
   groundTexture.anisotropy = 16;
   groundTexture.encoding = THREE.sRGBEncoding;
 
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+  orthoCamera = new THREE.OrthographicCamera(-width, width, height, -height, 1, 2000);
+  orthoCamera.position.set(0, 1000, 0);
+  orthoCamera.lookAt(0, 0, 0);
+  orthoCamera.layers.enable(0);  // Default objects
+  orthoCamera.layers.disable(1); // Hide helpers
+
+  scene.add(orthoCamera);
+
   const controls = new PointerLockControls(camera, renderer.domElement);
   const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
   function resetKeys() {
@@ -55,9 +86,14 @@ async function init() {
       keys[key] = false;
     }
   }
+
+  
   // Key controls for walking only (driving controls moved to driving.js)
   const onKeyDown = (event) => {
     if (controls.isLocked) {
+      if (event.code == "KeyH") {
+        cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
+      }
       if (event.code === "KeyP") {
         controls.unlock();
         startPanel.style.display = "block";
@@ -66,7 +102,7 @@ async function init() {
         keys[event.code] = true;
       }
     }
-  };
+  }
 
   const onKeyUp = (event) => {
     if (controls.isLocked) {
@@ -82,21 +118,49 @@ async function init() {
   const startPanel = document.getElementById("startPanel");
   const startButton = document.getElementById("startButton");
   startButton.addEventListener(
-    "click",
-    () => {
+    "click", () => {
       controls.lock();
       startPanel.style.display = "none";
-    },
-    false
-  );
+    }, false );
+
+  /*
+  LOCK EVENT:
+-> MOUSE UP 
+
+-> MOUSE DOWN -> REGISTER CAMERA
+-> OBJECT
+-> UNLOCK EVENT  -> RESUME CAMERA
+
+
+UNLOCK EVENT:
+-> MOUSE UP 
+(WILL NOT REGISTER MOUSE DOWN EVENT)
+-> LOCK EVENT  
+
+  */
+
+  let savedCameraState = null;
   controls.addEventListener("lock", (event) => {
+    console.log("(LOCK) EVENT")
     startPanel.style.display = "none";
   });
+
   controls.addEventListener("unlock", (event) => {
+    console.log("(UNLOCK) EVENT")
     resetKeys();
+
+    if (savedCameraState) {
+        camera.position.copy(savedCameraState.position);
+        camera.quaternion.copy(savedCameraState.quaternion);
+        renderer.render(scene, camera);
+        //savedCameraState = null; // Clear after restoring
+      }
+    
   });
+
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
   // Load cars and add them to our cars array for tracking
   const mclarenCar = await loadGLTFModel("mclaren/draco/chassis.gltf");
 
@@ -237,13 +301,13 @@ async function init() {
     }
   });
 
-  scene.add(mclarenCar);
+  //scene.add(mclarenCar);
   scene.add(asparkCar); // Add the Aspark car to the scene
   scene.add(bugattiCar); // Add the Bugatti car to the scene
   scene.add(ferrariCar); // Add the Ferrari car to the scene
 
   // Add cars to array for tracking and selection
-  cars.push(mclarenCar);
+  //cars.push(mclarenCar);
   cars.push(asparkCar); // Add the Aspark car to the cars array
   cars.push(bugattiCar); // Add the Bugatti car to the cars array
   cars.push(ferrariCar); // Add the Ferrari car to the cars array
@@ -282,7 +346,8 @@ async function init() {
   directionalLight.shadow.camera.bottom = -1000;
   scene.add(directionalLight);
   const helper = new THREE.DirectionalLightHelper(directionalLight, 5);
-  scene.add(helper);
+  //scene.add(helper);
+  
   // Create a much larger ground plane for infinite-like appearance
   const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
   const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
@@ -310,22 +375,25 @@ async function init() {
   camera.lookAt(scene.position);
   scene.add(camera);
 
+  let SceneObjectUUID = {};
+
   for (let child of scene.children) {
     let child_uuid = child.uuid;
-    SceneObject[child_uuid] = child;
+    SceneObjectUUID[child_uuid] = child;
   }
 
   const raycaster = new THREE.Raycaster();
   let { raycastObjects: RayCastObjects, rayCastMapping: RayCastMapping } =
     createRayCastObjects();
 
-  console.log("Scene objects Scene:", scene.children);
-  console.log("Scene objects SceneObject:", SceneObject);
+  console.log("Scene objects:", scene.children);
+  console.log("SceneObjectUUID:", SceneObjectUUID);
   console.log("RaycastObjects:", RayCastObjects);
   console.log("RayCastMapping: ", RayCastMapping);
 
   let isMouseClicked = false;
   window.addEventListener("mousedown", (event) => {
+    console.log("MOUSE DOWN EVENT")
     const guiPanel = document.getElementById("objectInfoPanel");
     const clickedInsideGUI = guiPanel.contains(event.target);
     if (clickedInsideGUI) return;
@@ -342,10 +410,9 @@ async function init() {
     checkIntersection(RayCastObjects);
     isMouseClicked = true;
 
-    console.log(
-      "Mouse down, INTERSECTED:",
-      INTERSECTED ? INTERSECTED.uuid : "none"
-    );
+    let lookAtPos = new THREE.Vector3();
+    camera.getWorldDirection(lookAtPos);
+    console.log("Looking at (MOUSE DOWN): ", lookAtPos);
 
     if (INTERSECTED) {
       handleInteraction(INTERSECTED, isMouseClicked);
@@ -356,14 +423,13 @@ async function init() {
   });
 
   function clearGuiPanel(guiPanel) {
-    guiPanel.style.display = "none";
-    if (objectGui) {
-      objectGui.destroy?.();
-      objectGui = null;
-    }
+        if (guiPanel) {
+            guiPanel.style.display = "none";
+        }
   }
 
   window.addEventListener("mouseup", () => {
+    console.log("MOUSE UP EVENT");
     isMouseClicked = false;
   });
 
@@ -427,7 +493,7 @@ async function init() {
         const boxHelper = new THREE.BoxHelper(colliderBox, 0xffff00);
         boxHelper.visible = false; // Hide the yellow bounding boxes
         colliderBox.userData.helper = boxHelper;
-        scene.add(boxHelper);
+        //scene.add(boxHelper);
       }
     }
 
@@ -442,6 +508,7 @@ async function init() {
     }
     return false;
   }
+
   function checkIntersection(objList) {
     raycaster.setFromCamera(pointer, camera);
     const intersectsList = raycaster.intersectObjects(objList, true);
@@ -473,11 +540,13 @@ async function init() {
       }
     }
   }
+
   function updateCamera() {
     // Driving is now handled in driving.js, so we only need the non-driving updates here
     updateControlMove(keys);
     updateCameraPoint();
   }
+
   function enterCarDriving(car) {
     // Instead of setting up driving in this page, redirect to the dedicated driving page
     // Find the index of the car in the cars array
@@ -492,30 +561,8 @@ async function init() {
     } else {
       console.error("Car not found in cars array:", car.name);
     }
-  } // This function is no longer needed as exiting is handled in the driving page
-  function exitCarDriving() {
-    // This function is kept as a stub for any code that might call it
-    console.log("exitCarDriving function is now handled in driving.js");
-  }
-
-  let drivingGui = null; // The following functions have been moved to driving.js
-  // They are kept here as stubs to prevent errors in any code that might call them
-
-  function createDrivingGUI() {
-    console.log("createDrivingGUI function is now handled in driving.js");
-  }
-
-  function removeDrivingGUI() {
-    console.log("removeDrivingGUI function is now handled in driving.js");
-  }
-
-  function updateCarDriving() {
-    console.log("updateCarDriving function is now handled in driving.js");
-  }
-
-  function updateCarFollowCamera(instant = false) {
-    console.log("updateCarFollowCamera function is now handled in driving.js");
-  }
+  } 
+ 
   function handleInteraction(mesh, isMouseClicked) {
     if (isMouseClicked) {
       controls.unlock();
@@ -525,6 +572,9 @@ async function init() {
       const collider_uuid = mesh.uuid;
       const original_uuid = RayCastMapping[collider_uuid];
       const targetObject = retrieveObjectWithUUID(original_uuid);
+
+      console.log("Clicked obj: ", mesh, "UUID: ", collider_uuid)
+      console.log("Og object: ", targetObject, "UUID: ",original_uuid)
 
       if (targetObject) {
         console.log("TARGET OBJECT: ", targetObject); // Check if it's one of our cars
@@ -547,18 +597,11 @@ async function init() {
     return;
   }
 
-  let objectGui;
-
   function setupObjectGUI(mesh) {
     const panel = document.getElementById("objectInfoPanel");
     const details = document.getElementById("objectDetails");
     const guiContainer = document.getElementById("objectGui");
     guiContainer.innerHTML = "";
-
-    if (objectGui) {
-      objectGui.destroy?.();
-      objectGui = null;
-    }
 
     const info = `
             <strong>Name:</strong> ${mesh.name}<br/>
@@ -567,7 +610,7 @@ async function init() {
     details.innerHTML = info;
     panel.style.display = "block";
 
-    objectGui = new GUI({ autoPlace: false, width: 300 });
+    let objectGui = new GUI({ autoPlace: false, width: 300 });
     guiContainer.appendChild(objectGui.domElement);
 
     // Add drive button if it's a car
@@ -609,23 +652,19 @@ async function init() {
   }
 
   function getSimplifyCollider(mesh) {
-    const box = new THREE.Box3().setFromObject(mesh);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-
-    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
-    const collider = new THREE.Mesh(
-      boxGeo,
-      new THREE.MeshBasicMaterial({ visible: false })
-    );
-    collider.position.copy(center);
-
-    // Assign the collider to the mesh's userData
-    mesh.userData.collider = collider;
-
-    return collider;
+      const box = new THREE.Box3().setFromObject(mesh);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+  
+      const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+      const collider = new THREE.Mesh(
+        boxGeo,
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      collider.position.copy(center);
+      return collider;
   }
 
   function retrieveObjectWithUUID(uuid) {
@@ -645,31 +684,22 @@ async function init() {
     composer.addPass(renderPass);
     composer.addPass(outlinePass);
   }
+
   function mergeGroupIntoSingleMesh(group) {
-    // Skip the merge process entirely and use a simplified box collider approach
-    // This avoids issues with incompatible geometry attributes and morphAttributes
-    const box = new THREE.Box3().setFromObject(group);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-
-    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
-    const collider = new THREE.Mesh(
-      boxGeo,
-      new THREE.MeshBasicMaterial({
-        color: 0xff0000,
-        wireframe: true,
-        visible: false,
-      })
-    );
-    collider.position.copy(center);
-
-    // Add userData to help with debugging
-    collider.userData.isCollider = true;
-    collider.userData.originalObject = group;
-
-    return collider;
+    let geometries = [];
+    let material = null;
+    group.traverse((child) => {
+      if (child.isMesh) {
+        const clonedGeometry = child.geometry.clone();
+        clonedGeometry.applyMatrix4(child.matrixWorld);
+        geometries.push(clonedGeometry);
+        if (!material) material = child.material;
+      }
+    });
+    if (geometries.length === 0) return null;
+    const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
+    const mergedMesh = new THREE.Mesh(mergedGeometry, material);
+    return mergedMesh;
   }
 
   function applyOutlineToMesh(mesh) {
@@ -683,17 +713,15 @@ async function init() {
   function removeOutline() {
     outlinePass.selectedObjects = [];
   }
+
+  
   function onPointerMove(event) {
+    if (isMouseClicked) return; // debounce pointer
     if (controls.isLocked) {
-      // When pointer is locked (walking mode), center the pointer
       pointer.set(0, 0);
     } else {
-      // When pointer is free (selection mode), use the actual pointer position
       pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
       pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-      // Always check for intersection when pointer moves (since driving is in another page)
-      checkIntersection(RayCastObjects);
     }
   }
 
@@ -729,19 +757,42 @@ async function init() {
   }
 
   function updateControlMove(keys) {
-    const moveSpeed = 500;
-    const delta = Math.min(clock.getDelta(), 0.1);
-    const speed = delta * moveSpeed;
-    const direction = new THREE.Vector3();
-    const right = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    direction.normalize();
-    right.crossVectors(camera.up, direction).normalize();
-    if (keys.KeyW) camera.position.addScaledVector(direction, speed);
-    if (keys.KeyS) camera.position.addScaledVector(direction, -speed);
-    if (keys.KeyA) camera.position.addScaledVector(right, speed);
-    if (keys.KeyD) camera.position.addScaledVector(right, -speed);
+      const moveSpeed = 500;
+      const delta = Math.min(clock.getDelta(), 0.1);
+      const speed = delta * moveSpeed;
+  
+      // Get direction and right vector once
+      const forward = new THREE.Vector3();
+      const right = new THREE.Vector3();
+      const up = new THREE.Vector3(0, 1, 0);
+  
+      camera.getWorldDirection(forward).normalize();
+      right.crossVectors(up, forward).normalize();
+  
+      // Project movement vectors to XZ plane if in 'strict' mode
+      if (cameraFlyMode === 'strict') {
+        forward.y = 0;
+        right.y = 0;
+        forward.normalize();
+        right.normalize();
+      }
+  
+      const movement = new THREE.Vector3();
+  
+      if (keys.KeyW) movement.add(forward);
+      if (keys.KeyS) movement.addScaledVector(forward, -1);
+      if (keys.KeyA) movement.add(right);
+      if (keys.KeyD) movement.addScaledVector(right, -1);
+  
+      movement.normalize().multiplyScalar(speed);
+      camera.position.add(movement);
+  
+      if (cameraFlyMode === 'strict') {
+        camera.position.y = carHeight - 50;
+      }
   }
+
+
 
   function updateCameraPoint() {
     trackCameraPoint(camPoint);
@@ -750,8 +801,9 @@ async function init() {
   function animate() {
     requestAnimationFrame(animate);
     updateCamera();
-    UpdateBoxHelper(RayCastObjects);
+    updateMapCamera();
     render();
+    renderMap();
   }
 
   function windowResize() {
@@ -760,78 +812,106 @@ async function init() {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
+    orthoCamera.updateProjectionMatrix() 
     render();
   }
 
   function render() {
     stats.update();
-    UpdateBoxHelper(RayCastObjects);
+    //UpdateBoxHelper(RayCastObjects);
 
     // Use the composer for rendering when outlining is needed
-    if (outlinePass.selectedObjects.length > 0) {
+    if (outlineMode && outlinePass.selectedObjects.length > 0) {
       composer.render();
     } else {
       renderer.render(scene, camera);
     }
+    return scene;
   }
 
-  return scene;
-}
-
-function UpdateBoxHelper(raycastObjects) {
-  raycastObjects.forEach((obj) => {
-    if (obj.userData.helper) {
-      obj.userData.helper.update();
-    }
-    if (obj.userData.collider) {
-      obj.userData.collider.position.copy(obj.position);
-      obj.userData.collider.rotation.copy(obj.rotation);
-    }
-  });
-}
-
-function loadGLTFModel(gltfPath) {
-  const onProgress = function (xhr) {
-    if (xhr.lengthComputable) {
-      const percentComplete = (xhr.loaded / xhr.total) * 100;
-      console.log(`Loading model: ${percentComplete.toFixed(2)}%`);
-    }
-  };
-
-  return new Promise((resolve, reject) => {
-    // Setup DRACO decoder
-    const dracoLoader = new DRACOLoader();
-    // Use a more standard path to the draco decoder
-    dracoLoader.setDecoderPath(
-      "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
-    );
-    dracoLoader.setDecoderConfig({ type: "js" });
-
-    // Setup GLTF loader
-    const gltfLoader = new GLTFLoader();
-    gltfLoader.setDRACOLoader(dracoLoader);
-
-    gltfLoader.load(
-      gltfPath,
-      (gltf) => {
-        const model = gltf.scene;
-        resolve(model);
-      },
-      onProgress,
-      (error) => {
-        console.error(`Error loading model ${gltfPath}:`, error);
-        reject(error);
+  function UpdateBoxHelper(raycastObjects) {
+    raycastObjects.forEach((obj) => {
+      if (obj.userData.helper) {
+        obj.userData.helper.update();
       }
+      if (obj.userData.collider) {
+        obj.userData.collider.position.copy(obj.position);
+        obj.userData.collider.rotation.copy(obj.rotation);
+      }
+    });
+  }
+
+  function loadGLTFModel(gltfPath) {
+    const onProgress = function (xhr) {
+      if (xhr.lengthComputable) {
+        const percentComplete = (xhr.loaded / xhr.total) * 100;
+        console.log(`Loading model: ${percentComplete.toFixed(2)}%`);
+      }
+    };
+
+    return new Promise((resolve, reject) => {
+      // Setup DRACO decoder
+      const dracoLoader = new DRACOLoader();
+      // Use a more standard path to the draco decoder
+      dracoLoader.setDecoderPath(
+        "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
+      );
+      dracoLoader.setDecoderConfig({ type: "js" });
+
+      // Setup GLTF loader
+      const gltfLoader = new GLTFLoader();
+      gltfLoader.setDRACOLoader(dracoLoader);
+
+      gltfLoader.load(
+        gltfPath,
+        (gltf) => {
+          const model = gltf.scene;
+          resolve(model);
+        },
+        onProgress,
+        (error) => {
+          console.error(`Error loading model ${gltfPath}:`, error);
+          reject(error);
+        }
+      );
+    });
+  }
+
+  function updateMapCamera() {
+    // Copy XZ position from main camera
+    orthoCamera.position.x = camera.position.x;
+    orthoCamera.position.z = camera.position.z;
+    orthoCamera.position.y = 1000;
+
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    dir.y = 0;
+    dir.normalize();
+
+    const target = new THREE.Vector3(
+      camera.position.x + dir.x,
+      0,
+      camera.position.z + dir.z
     );
-  });
+
+    orthoCamera.lookAt(target);
+    orthoCamera.updateProjectionMatrix();
+  }
+
+  function renderMap() {
+    const wrapper = document.getElementById("minimapWrapper");
+    const width = wrapper.clientWidth;
+    const height = wrapper.clientHeight;
+
+    minimapRenderer.setSize(width, height);
+    minimapRenderer.setScissor(0, 0, width, height);
+    minimapRenderer.setViewport(0, 0, width, height);
+    minimapRenderer.setScissorTest(true);
+    minimapRenderer.clear();
+    minimapRenderer.render(scene, orthoCamera);
+    minimapRenderer.setScissorTest(false);
+    }
+  
 }
 
-// getPlane function has been removed as it's no longer used
-
-// No need for driving UI setup since it's now in driving.html/driving.js
-document.addEventListener("DOMContentLoaded", function () {
-  // Initialize any main page UI elements here if needed
-});
-
-let scene = init();
-window.scene = scene;
+init();
