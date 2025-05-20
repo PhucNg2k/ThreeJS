@@ -133,12 +133,6 @@ async function init() {
   // Add lighting
   setupLighting();
 
-  // Load ground texture
-  const groundTexture = await loadTexture("cracked-cement.jpg");
-
-  // Create ground plane
-  createGroundPlane(groundTexture);
-
   // Load car models
   await loadCars();
 
@@ -485,38 +479,6 @@ function loadTexture(path) {
       }
     );
   });
-}
-
-function createGroundPlane(groundTexture) {
-  // Create a large ground plane that looks like a street
-  const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
-  const planeMaterial = new THREE.MeshStandardMaterial({
-    map: groundTexture,
-    roughness: 0.9,
-    metalness: 0.1,
-    color: 0x333333, // Darker color to represent asphalt
-  });
-  planeMaterial.receiveShadow = true;
-
-  const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-  plane.position.y = -5.0;
-  plane.rotation.x = -Math.PI / 2;
-  plane.receiveShadow = true;
-
-  scene.add(plane);
-
-  // Create road markings (simple white lines)
-  const roadMarkingGeometry = new THREE.PlaneGeometry(1000, 30);
-  const roadMarkingMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-  // Center line
-  for (let i = -10; i <= 10; i++) {
-    const marking = new THREE.Mesh(roadMarkingGeometry, roadMarkingMaterial);
-    marking.position.set(0, -4.8, i * 1000);
-    marking.rotation.x = -Math.PI / 2;
-    marking.scale.set(0.05, 1, 1); // Make it thin
-    scene.add(marking);
-  }
 }
 
 async function loadCars() {
