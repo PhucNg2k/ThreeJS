@@ -10,24 +10,24 @@ import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUti
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import GUI from "lil-gui";
 
-
 RectAreaLightUniformsLib.init();
 const clock = new THREE.Clock();
 const pointer = new THREE.Vector2();
 let INTERSECTED = null;
 let composer, outlinePass;
 
-
-let scene ,camera, orthoCamera, minimapRenderer;
-let cameraFlyMode = 'fly';
+let scene, camera, orthoCamera, minimapRenderer;
+let cameraFlyMode = "fly";
 let outlineMode = false;
 
 // Car array for tracking cars in the scene
 let cars = [];
 
 async function init() {
-
-  minimapRenderer = new THREE.WebGLRenderer({ alpha: true, canvas: document.getElementById("minimapCanvas") });
+  minimapRenderer = new THREE.WebGLRenderer({
+    alpha: true,
+    canvas: document.getElementById("minimapCanvas"),
+  });
   minimapRenderer.setPixelRatio(window.devicePixelRatio);
   minimapRenderer.setClearColor(0x000000, 0); // transparent background
 
@@ -36,7 +36,7 @@ async function init() {
   const stats = new Stats();
   document.getElementById("webgl").appendChild(stats.dom);
   document.getElementById("webgl").appendChild(renderer.domElement);
-  
+
   camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
@@ -46,9 +46,9 @@ async function init() {
   camera.updateProjectionMatrix();
   camera.layers.enable(0); // Default layer
   camera.layers.enable(1); // Include helpers
-  
+
   renderer.setPixelRatio(window.devicePixelRatio);
-  
+
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x4287f5);
 
@@ -71,10 +71,17 @@ async function init() {
 
   let width = window.innerWidth;
   let height = window.innerHeight;
-  orthoCamera = new THREE.OrthographicCamera(-width, width, height, -height, 1, 2000);
+  orthoCamera = new THREE.OrthographicCamera(
+    -width,
+    width,
+    height,
+    -height,
+    1,
+    2000
+  );
   orthoCamera.position.set(0, 1000, 0);
   orthoCamera.lookAt(0, 0, 0);
-  orthoCamera.layers.enable(0);  // Default objects
+  orthoCamera.layers.enable(0); // Default objects
   orthoCamera.layers.disable(1); // Hide helpers
 
   scene.add(orthoCamera);
@@ -87,12 +94,11 @@ async function init() {
     }
   }
 
-  
   // Key controls for walking only (driving controls moved to driving.js)
   const onKeyDown = (event) => {
     if (controls.isLocked) {
       if (event.code == "KeyH") {
-        cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
+        cameraFlyMode = cameraFlyMode === "fly" ? "strict" : "fly";
       }
       if (event.code === "KeyP") {
         controls.unlock();
@@ -102,7 +108,7 @@ async function init() {
         keys[event.code] = true;
       }
     }
-  }
+  };
 
   const onKeyUp = (event) => {
     if (controls.isLocked) {
@@ -118,10 +124,13 @@ async function init() {
   const startPanel = document.getElementById("startPanel");
   const startButton = document.getElementById("startButton");
   startButton.addEventListener(
-    "click", () => {
+    "click",
+    () => {
       controls.lock();
       startPanel.style.display = "none";
-    }, false );
+    },
+    false
+  );
 
   /*
   LOCK EVENT:
@@ -141,24 +150,23 @@ UNLOCK EVENT:
 
   let savedCameraState = null;
   controls.addEventListener("lock", (event) => {
-    console.log("(LOCK) EVENT")
+    console.log("(LOCK) EVENT");
     startPanel.style.display = "none";
 
     let carOptionPanel = document.getElementById("carOptionPanel");
-    carOptionPanel.style.display = "none"
+    carOptionPanel.style.display = "none";
   });
 
   controls.addEventListener("unlock", (event) => {
-    console.log("(UNLOCK) EVENT")
+    console.log("(UNLOCK) EVENT");
     resetKeys();
 
     if (savedCameraState) {
-        camera.position.copy(savedCameraState.position);
-        camera.quaternion.copy(savedCameraState.quaternion);
-        renderer.render(scene, camera);
-        //savedCameraState = null; // Clear after restoring
-      }
-    
+      camera.position.copy(savedCameraState.position);
+      camera.quaternion.copy(savedCameraState.quaternion);
+      renderer.render(scene, camera);
+      //savedCameraState = null; // Clear after restoring
+    }
   });
 
   renderer.shadowMap.enabled = true;
@@ -350,7 +358,7 @@ UNLOCK EVENT:
   scene.add(directionalLight);
   const helper = new THREE.DirectionalLightHelper(directionalLight, 5);
   //scene.add(helper);
-  
+
   // Create a much larger ground plane for infinite-like appearance
   const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
   const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
@@ -396,15 +404,19 @@ UNLOCK EVENT:
 
   let isMouseClicked = false;
   window.addEventListener("mousedown", (event) => {
-    console.log("MOUSE DOWN EVENT")
+    console.log("MOUSE DOWN EVENT");
     const guiPanel = document.getElementById("objectInfoPanel");
     const carOptionPanel = document.getElementById("carOptionPanel");
-     const clickedInsideGUI = (guiPanel && guiPanel.contains(event.target)) || (carOptionPanel && carOptionPanel.contains(event.target));
+    const clickedInsideGUI =
+      (guiPanel && guiPanel.contains(event.target)) ||
+      (carOptionPanel && carOptionPanel.contains(event.target));
     if (clickedInsideGUI) {
-        console.log("Click inside GUI or car option panel, ignoring control lock");
-        return;
+      console.log(
+        "Click inside GUI or car option panel, ignoring control lock"
+      );
+      return;
     }
-    
+
     if (!controls.isLocked) {
       setTimeout(() => {
         controls.lock();
@@ -427,7 +439,11 @@ UNLOCK EVENT:
     } else {
       clearGuiPanel(guiPanel);
       // Only clear carOptionPanel if no car is selected
-      if (!cars.includes(retrieveObjectWithUUID(RayCastMapping[INTERSECTED?.uuid]))) {
+      if (
+        !cars.includes(
+          retrieveObjectWithUUID(RayCastMapping[INTERSECTED?.uuid])
+        )
+      ) {
         clearCarOptionPanel(carOptionPanel);
       }
       removeOutline();
@@ -581,8 +597,38 @@ UNLOCK EVENT:
     } else {
       console.error("Car not found in cars array:", car.name);
     }
-  } 
-
+  }
+  // Helper function to get the model path and display name based on car name
+  function getCarModelPath(carName) {
+    // Map car names to their model paths and display names
+    if (carName.includes("AsparkOwl")) {
+      return {
+        path: "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf",
+        displayName: "Aspark Owl",
+      };
+    } else if (carName.includes("BugattiBolide")) {
+      return {
+        path: "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf",
+        displayName: "Bugatti Bolide",
+      };
+    } else if (carName.includes("FerrariMonzaSP1")) {
+      return {
+        path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
+        displayName: "Ferrari Monza SP1",
+      };
+    } else if (carName.includes("MclarenDraco")) {
+      return {
+        path: "mclaren/draco/chassis.gltf",
+        displayName: "McLaren",
+      };
+    } else {
+      // Default fallback path for unknown cars
+      return {
+        path: "Car/Car.fbx",
+        displayName: "Default Car",
+      };
+    }
+  }
 
   function optionGateway(targetObject) {
     if (!cars.includes(targetObject)) return;
@@ -595,7 +641,13 @@ UNLOCK EVENT:
     let driveButton = document.getElementById("driveCarButton");
     let cancelButton = document.getElementById("cancelButton");
 
-    if (!carOptionPanel || !carOptionTitle || !viewButton || !driveButton || !cancelButton) {
+    if (
+      !carOptionPanel ||
+      !carOptionTitle ||
+      !viewButton ||
+      !driveButton ||
+      !cancelButton
+    ) {
       console.error("Car option panel elements not found");
       return;
     }
@@ -614,12 +666,22 @@ UNLOCK EVENT:
     // Update references to new buttons
     viewButton = viewClone;
     driveButton = driveClone;
-    cancelButton = cancelClone;
-
-    // Add event listeners
+    cancelButton = cancelClone; // Add event listeners
     viewButton.addEventListener("click", () => {
       console.log(`Viewing ${targetObject.name} on podium`);
-      window.location.replace('podium.html');
+
+      // Get car info including path and simplified name for podium.js
+      const carInfo = getCarModelPath(targetObject.name);
+
+      // Save the selected car information to localStorage
+      const selectedCar = {
+        name: carInfo.displayName, // Use the displayName that podium.js expects
+        path: carInfo.path,
+        originalName: targetObject.name, // Keep original name for reference
+      };
+      localStorage.setItem("selectedCar", JSON.stringify(selectedCar));
+
+      window.location.replace("podium.html");
       carOptionPanel.style.display = "none";
     });
 
@@ -640,9 +702,9 @@ UNLOCK EVENT:
     carOptionPanel.offsetHeight; // Trigger reflow
     carOptionPanel.style.display = "block";
     console.log("Car option panel displayed for:", targetObject.name);
-    console.log("Panel: ", carOptionPanel)
+    console.log("Panel: ", carOptionPanel);
   }
- 
+
   function handleInteraction(mesh, isMouseClicked) {
     if (isMouseClicked) {
       controls.unlock();
@@ -653,8 +715,8 @@ UNLOCK EVENT:
       const original_uuid = RayCastMapping[collider_uuid];
       const targetObject = retrieveObjectWithUUID(original_uuid);
 
-      console.log("Clicked obj: ", mesh, "UUID: ", collider_uuid)
-      console.log("Og object: ", targetObject, "UUID: ",original_uuid)
+      console.log("Clicked obj: ", mesh, "UUID: ", collider_uuid);
+      console.log("Og object: ", targetObject, "UUID: ", original_uuid);
 
       if (targetObject) {
         console.log("TARGET OBJECT: ", targetObject); // Check if it's one of our cars
@@ -725,19 +787,19 @@ UNLOCK EVENT:
   }
 
   function getSimplifyCollider(mesh) {
-      const box = new THREE.Box3().setFromObject(mesh);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-  
-      const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
-      const collider = new THREE.Mesh(
-        boxGeo,
-        new THREE.MeshBasicMaterial({ visible: false })
-      );
-      collider.position.copy(center);
-      return collider;
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const collider = new THREE.Mesh(
+      boxGeo,
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    collider.position.copy(center);
+    return collider;
   }
 
   function retrieveObjectWithUUID(uuid) {
@@ -787,7 +849,6 @@ UNLOCK EVENT:
     outlinePass.selectedObjects = [];
   }
 
-  
   function onPointerMove(event) {
     if (isMouseClicked) return; // debounce pointer
     if (controls.isLocked) {
@@ -830,42 +891,40 @@ UNLOCK EVENT:
   }
 
   function updateControlMove(keys) {
-      const moveSpeed = 500;
-      const delta = Math.min(clock.getDelta(), 0.1);
-      const speed = delta * moveSpeed;
-  
-      // Get direction and right vector once
-      const forward = new THREE.Vector3();
-      const right = new THREE.Vector3();
-      const up = new THREE.Vector3(0, 1, 0);
-  
-      camera.getWorldDirection(forward).normalize();
-      right.crossVectors(up, forward).normalize();
-  
-      // Project movement vectors to XZ plane if in 'strict' mode
-      if (cameraFlyMode === 'strict') {
-        forward.y = 0;
-        right.y = 0;
-        forward.normalize();
-        right.normalize();
-      }
-  
-      const movement = new THREE.Vector3();
-  
-      if (keys.KeyW) movement.add(forward);
-      if (keys.KeyS) movement.addScaledVector(forward, -1);
-      if (keys.KeyA) movement.add(right);
-      if (keys.KeyD) movement.addScaledVector(right, -1);
-  
-      movement.normalize().multiplyScalar(speed);
-      camera.position.add(movement);
-  
-      if (cameraFlyMode === 'strict') {
-        camera.position.y = carHeight - 50;
-      }
+    const moveSpeed = 500;
+    const delta = Math.min(clock.getDelta(), 0.1);
+    const speed = delta * moveSpeed;
+
+    // Get direction and right vector once
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+
+    camera.getWorldDirection(forward).normalize();
+    right.crossVectors(up, forward).normalize();
+
+    // Project movement vectors to XZ plane if in 'strict' mode
+    if (cameraFlyMode === "strict") {
+      forward.y = 0;
+      right.y = 0;
+      forward.normalize();
+      right.normalize();
+    }
+
+    const movement = new THREE.Vector3();
+
+    if (keys.KeyW) movement.add(forward);
+    if (keys.KeyS) movement.addScaledVector(forward, -1);
+    if (keys.KeyA) movement.add(right);
+    if (keys.KeyD) movement.addScaledVector(right, -1);
+
+    movement.normalize().multiplyScalar(speed);
+    camera.position.add(movement);
+
+    if (cameraFlyMode === "strict") {
+      camera.position.y = carHeight - 50;
+    }
   }
-
-
 
   function updateCameraPoint() {
     trackCameraPoint(camPoint);
@@ -885,7 +944,7 @@ UNLOCK EVENT:
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
-    orthoCamera.updateProjectionMatrix() 
+    orthoCamera.updateProjectionMatrix();
     render();
   }
 
@@ -983,8 +1042,7 @@ UNLOCK EVENT:
     minimapRenderer.clear();
     minimapRenderer.render(scene, orthoCamera);
     minimapRenderer.setScissorTest(false);
-    }
-  
+  }
 }
 
 init();

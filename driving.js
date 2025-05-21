@@ -51,6 +51,7 @@ let currentTurnInfluence = 0;
 
 // Main scene components
 let renderer, camera, scene, stats;
+let orthoCamera, minimapRenderer; // For minimap
 let composer, outlinePass;
 let clock = new THREE.Clock();
 let settingsGui;
@@ -110,6 +111,29 @@ async function init() {
   camera.updateProjectionMatrix();
   // Create scene
   scene = new THREE.Scene();
+
+  // Create ortho camera for minimap
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  orthoCamera = new THREE.OrthographicCamera(
+    -width,
+    width,
+    height,
+    -height,
+    1,
+    2000
+  );
+  orthoCamera.position.set(0, 1000, 0);
+  orthoCamera.lookAt(0, 0, 0);
+  scene.add(orthoCamera);
+
+  // Setup minimap renderer
+  minimapRenderer = new THREE.WebGLRenderer({
+    alpha: true,
+    canvas: document.getElementById("minimapCanvas"),
+  });
+  minimapRenderer.setPixelRatio(window.devicePixelRatio);
+  minimapRenderer.setClearColor(0x000000, 0); // transparent background
 
   // Create a skybox for urban environment
   const skyboxLoader = new THREE.CubeTextureLoader();
@@ -729,6 +753,9 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+
+  // Update orthoCamera for minimap
+  orthoCamera.updateProjectionMatrix();
 }
 
 function createSettingsGUI() {
@@ -1059,8 +1086,45 @@ function updateCarFollowCamera(instant = false) {
 }
 
 function exitDrivingMode() {
-  // Return to main scene
-  window.location.href = "index.html";
+  // Return to main scene  window.location.href = "index.html";
+}
+
+function updateMapCamera() {
+  if (!selectedCar) return;
+
+  // Copy position from the car to minimap camera
+  orthoCamera.position.x = selectedCar.position.x;
+  orthoCamera.position.z = selectedCar.position.z;
+  orthoCamera.position.y = 1000; // Fixed height
+
+  // Get car direction
+  const dir = selectedCar.userData.direction.clone();
+  dir.y = 0;
+  dir.normalize();
+
+  // Look ahead of the car
+  const target = new THREE.Vector3(
+    selectedCar.position.x + dir.x,
+    0,
+    selectedCar.position.z + dir.z
+  );
+
+  orthoCamera.lookAt(target);
+  orthoCamera.updateProjectionMatrix();
+}
+
+function renderMap() {
+  const wrapper = document.getElementById("minimapWrapper");
+  const width = wrapper.clientWidth;
+  const height = wrapper.clientHeight;
+
+  minimapRenderer.setSize(width, height);
+  minimapRenderer.setScissor(0, 0, width, height);
+  minimapRenderer.setViewport(0, 0, width, height);
+  minimapRenderer.setScissorTest(true);
+  minimapRenderer.clear();
+  minimapRenderer.render(scene, orthoCamera);
+  minimapRenderer.setScissorTest(false);
 }
 
 function animate() {
@@ -1072,8 +1136,14 @@ function animate() {
   // Update camera position
   updateCarFollowCamera();
 
+  // Update minimap
+  updateMapCamera();
+
   // Render scene with post-processing
   renderer.render(scene, camera);
+
+  // Render minimap
+  renderMap();
 
   // Update stats
   stats.update();
