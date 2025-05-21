@@ -184,7 +184,7 @@ async function init() {
     document.getElementById("current-map-name").textContent = selectedMap.name;
     document.getElementById("map-description").textContent =
       selectedMap.userData.description;
-  }  // Start animation loop
+  } // Start animation loop
   animate();
 
   // Show notification about unlimited driving and fixed exit button
@@ -537,7 +537,7 @@ async function loadCars() {
         name: "Ferrari Monza SP1",
         scale: [14000, 14000, 14000],
       },
-    ];    // Define map options
+    ]; // Define map options
     const mapOptions = [
       {
         path: "mclaren/city_nyc_times_square/scene.gltf",
@@ -552,7 +552,7 @@ async function loadCars() {
         scale: [200, 200, 200],
         position: [0, -5, -2000],
         description: "Modern city with realistic buildings and wide streets",
-      }
+      },
     ];
 
     // Check if URL has a map parameter
@@ -966,10 +966,10 @@ function createSettingsGUI() {
 // No boundaries - allowing unlimited driving
 // Define an empty boundary with extreme values so we don't get errors
 const cityBoundary = {
-  minX: -1000000, 
+  minX: -1000000,
   maxX: 1000000,
   minZ: -1000000,
-  maxZ: 1000000
+  maxZ: 1000000,
 };
 
 function updateCarMovement() {
@@ -1023,8 +1023,8 @@ function updateCarMovement() {
   direction.applyQuaternion(selectedCar.quaternion);
   direction.y = 0; // Keep on ground
   direction.normalize();
-  selectedCar.userData.direction.copy(direction); 
-  
+  selectedCar.userData.direction.copy(direction);
+
   // Calculate movement vector
   const moveVector = selectedCar.userData.direction
     .clone()
