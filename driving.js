@@ -11,6 +11,11 @@ import GUI from "lil-gui";
 let cars = [];
 let selectedCar = null;
 
+// Available maps and selected map
+let maps = [];
+let currentMapIndex = 0;
+let selectedMap = null;
+
 // Audio player for background music
 let musicEnabled = false;
 let backgroundMusic = null;
@@ -169,14 +174,29 @@ async function init() {
 
   // Create GUI for car settings
   createSettingsGUI();
-
   // Display car name
   document.getElementById("current-car-name").textContent = selectedCar
     ? selectedCar.name
     : "Unknown Car";
 
-  // Start animation loop
+  // Display map name and description if available
+  if (selectedMap) {
+    document.getElementById("current-map-name").textContent = selectedMap.name;
+    document.getElementById("map-description").textContent =
+      selectedMap.userData.description;
+  }  // Start animation loop
   animate();
+
+  // Show notification about unlimited driving and fixed exit button
+  document.getElementById("map-notification").textContent =
+    "Unlimited Driving Enabled & Exit Button Fixed";
+  document.getElementById("map-notification").style.opacity = 1;
+  document.getElementById("map-notification").style.color = "#00cc00";
+
+  // Hide notification after 3 seconds
+  setTimeout(() => {
+    document.getElementById("map-notification").style.opacity = 0;
+  }, 3000);
 }
 
 function setupAudio() {
@@ -517,22 +537,65 @@ async function loadCars() {
         name: "Ferrari Monza SP1",
         scale: [14000, 14000, 14000],
       },
+    ];    // Define map options
+    const mapOptions = [
+      {
+        path: "mclaren/city_nyc_times_square/scene.gltf",
+        name: "NYC Times Square",
+        scale: [1500, 1500, 1500],
+        position: [0, -5, -2000],
+        description: "Busy urban city environment inspired by Times Square",
+      },
+      {
+        path: "mclaren/full_gameready_city_buildings/scene.gltf",
+        name: "Game-Ready City",
+        scale: [200, 200, 200],
+        position: [0, -5, -2000],
+        description: "Modern city with realistic buildings and wide streets",
+      }
     ];
 
-    // Load NYC Times Square city model
-    console.log("Loading NYC Times Square model...");
-    const nycCity = await loadGLTFModel(
-      "mclaren/city_nyc_times_square/scene.gltf"
-    );
-    nycCity.name = "NYC Times Square";
+    // Check if URL has a map parameter
+    const mapId = urlParams.get("map");
+    if (mapId && parseInt(mapId) >= 0 && parseInt(mapId) < mapOptions.length) {
+      currentMapIndex = parseInt(mapId);
+    }
 
-    // Scale and position the city model
-    nycCity.scale.set(1500, 1500, 1500);
-    nycCity.position.set(0, -5, -2000); // Position it behind the starting point
+    // Load all maps but only add the selected one to the scene
+    for (let i = 0; i < mapOptions.length; i++) {
+      const mapOption = mapOptions[i];
+      console.log(`Loading map: ${mapOption.name}...`);
 
-    // Add city to scene
-    scene.add(nycCity);
-    console.log("NYC Times Square model loaded and added to scene");
+      try {
+        const map = await loadGLTFModel(mapOption.path);
+        map.name = mapOption.name;
+        map.userData.description = mapOption.description;
+
+        // Configure map
+        map.scale.set(
+          mapOption.scale[0],
+          mapOption.scale[1],
+          mapOption.scale[2]
+        );
+        map.position.set(
+          mapOption.position[0],
+          mapOption.position[1],
+          mapOption.position[2]
+        );
+
+        // Add to maps array
+        maps.push(map);
+
+        // Add the selected map to the scene
+        if (i === currentMapIndex) {
+          scene.add(map);
+          selectedMap = map;
+          console.log(`Added ${map.name} to scene as the selected map`);
+        }
+      } catch (error) {
+        console.error(`Error loading map ${mapOption.name}:`, error);
+      }
+    }
 
     // Load all car models but only add the selected one to the scene
     for (let i = 0; i < carOptions.length; i++) {
@@ -709,6 +772,14 @@ function onKeyDown(event) {
       );
       updateVolume();
       break;
+    case "KeyX":
+      // Switch to next map
+      switchMap("next");
+      break;
+    case "KeyZ":
+      // Switch to previous map
+      switchMap("prev");
+      break;
     case "Escape":
       exitDrivingMode();
       break;
@@ -794,6 +865,48 @@ function createSettingsGUI() {
     .onChange((value) => {
       cameraLerpFactor = value;
     });
+  const mapFolder = settingsGui.addFolder("Map");
+  mapFolder.add(
+    {
+      "Current Map": () => {
+        if (selectedMap) {
+          alert(
+            `Current Map: ${selectedMap.name}\n${selectedMap.userData.description}\n\nUnlimited driving is enabled - no boundaries!`
+          );
+        }
+      },
+    },
+    "Current Map"
+  );
+
+  // Add info about unlimited driving
+  mapFolder.add(
+    {
+      "Driving Mode": () => {
+        alert(
+          "Unlimited Driving Mode: You can drive anywhere without boundaries!"
+        );
+      },
+    },
+    "Driving Mode"
+  );
+
+  mapFolder.add(
+    {
+      "Next Map": () => {
+        switchMap("next");
+      },
+    },
+    "Next Map"
+  );
+  mapFolder.add(
+    {
+      "Previous Map": () => {
+        switchMap("prev");
+      },
+    },
+    "Previous Map"
+  );
 
   const audioFolder = settingsGui.addFolder("Audio");
   audioFolder.add({ Music: musicEnabled }, "Music").onChange((value) => {
@@ -846,15 +959,17 @@ function createSettingsGUI() {
   // Open folders by default
   carFolder.open();
   cameraFolder.open();
+  mapFolder.open();
   audioFolder.open();
 }
 
-// Boundary for the city area
+// No boundaries - allowing unlimited driving
+// Define an empty boundary with extreme values so we don't get errors
 const cityBoundary = {
-  minZ: -4000,
-  maxZ: 500,
-  minX: -2000,
-  maxX: 2000,
+  minX: -1000000, 
+  maxX: 1000000,
+  minZ: -1000000,
+  maxZ: 1000000
 };
 
 function updateCarMovement() {
@@ -885,24 +1000,7 @@ function updateCarMovement() {
 
   // Limit speed
   carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
-
-  // Check if in city area and apply speed regulations
-  const inCityArea = selectedCar.position.z < cityBoundary.minZ + 500;
-  if (inCityArea && Math.abs(carSpeed) > carMaxSpeed * 0.6) {
-    // Apply automatic speed reduction in the city
-    carSpeed *= 0.98;
-
-    // Show city speed warning if going too fast
-    if (Math.abs(carSpeed) > carMaxSpeed * 0.7) {
-      document.getElementById(
-        "current-car-name"
-      ).innerHTML = `${selectedCar.name} <span style="color:red">(Slow down in the city!)</span>`;
-      setTimeout(() => {
-        document.getElementById("current-car-name").textContent =
-          selectedCar.name;
-      }, 2000);
-    }
-  }
+  // No city area speed regulations anymore - unlimited driving
 
   // Update speedometer
   updateSpeedometer();
@@ -920,31 +1018,20 @@ function updateCarMovement() {
       selectedCar.rotation.y -= adaptiveTurnSpeed * Math.sign(carSpeed);
     }
   }
-
   // Update direction vector based on car rotation
   const direction = new THREE.Vector3(0, 0, 1);
   direction.applyQuaternion(selectedCar.quaternion);
   direction.y = 0; // Keep on ground
   direction.normalize();
-  selectedCar.userData.direction.copy(direction);
-
-  // Calculate potential new position
+  selectedCar.userData.direction.copy(direction); 
+  
+  // Calculate movement vector
   const moveVector = selectedCar.userData.direction
     .clone()
     .multiplyScalar(carSpeed);
-  const potentialNewPosition = selectedCar.position.clone().add(moveVector);
 
-  // Simple city boundary collision detection
-  let collision = false;
-  if (potentialNewPosition.z < cityBoundary.minZ) {
-    collision = true;
-    carSpeed *= -0.5; // Bounce back at reduced speed
-  }
-
-  // If no collision, move the car
-  if (!collision) {
-    selectedCar.position.add(moveVector);
-  }
+  // Move the car (no boundary restrictions)
+  selectedCar.position.add(moveVector);
 
   // Keep car at proper height above ground
   selectedCar.position.y = 5;
@@ -1077,7 +1164,8 @@ function updateCarFollowCamera(instant = false) {
 }
 
 function exitDrivingMode() {
-  // Return to main scene  window.location.href = "index.html";
+  // Return to main scene
+  window.location.href = "index.html";
 }
 
 function updateMapCamera() {
@@ -1131,6 +1219,49 @@ function renderMap() {
 
   // Render the scene from the orthographic camera
   minimapRenderer.render(scene, orthoCamera);
+}
+
+// Switch to the next or previous map
+function switchMap(direction) {
+  if (maps.length === 0) return;
+
+  // Remove current map from scene
+  if (selectedMap) {
+    scene.remove(selectedMap);
+  }
+
+  // Calculate new map index
+  if (direction === "next") {
+    currentMapIndex = (currentMapIndex + 1) % maps.length;
+  } else if (direction === "prev") {
+    currentMapIndex = (currentMapIndex - 1 + maps.length) % maps.length;
+  }
+
+  // Add new map to scene
+  selectedMap = maps[currentMapIndex];
+  scene.add(selectedMap);
+
+  // Reset car position when changing maps
+  if (selectedCar) {
+    selectedCar.position.set(0, 5, 0);
+    updateCarFollowCamera(true);
+  }
+  // Update map name display
+  document.getElementById("current-map-name").textContent = selectedMap.name;
+  document.getElementById("map-description").textContent =
+    selectedMap.userData.description;
+  // Show map notification with unlimited driving info
+  const mapNotification = document.getElementById("map-notification");
+  mapNotification.textContent = `Switched to ${selectedMap.name} - Drive anywhere without limits!`;
+  mapNotification.style.opacity = 1;
+  mapNotification.style.color = "#00cc00";
+
+  // Hide notification after 3 seconds
+  setTimeout(() => {
+    mapNotification.style.opacity = 0;
+  }, 3000);
+
+  console.log(`Switched to map: ${selectedMap.name}`);
 }
 
 function animate() {
