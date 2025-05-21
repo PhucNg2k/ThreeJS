@@ -1,0 +1,11 @@
+Model Information:
+* title:	Morgan Plus Six Assetto 2020
+* source:	https://sketchfab.com/3d-models/morgan-plus-six-assetto-2020-c0208c84bda0459e8c9c5e09b600b2c6
+* author:	vecarz (https://sketchfab.com/heynic)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Morgan Plus Six Assetto 2020" (https://sketchfab.com/3d-models/morgan-plus-six-assetto-2020-c0208c84bda0459e8c9c5e09b600b2c6) by vecarz (https://sketchfab.com/heynic) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

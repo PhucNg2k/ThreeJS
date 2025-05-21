@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Car Driving Simulator</title>
+    <link rel="stylesheet" href="driving-style.css">
+</head>
+<body>    <div id="webgl"></div>
+    
+    <div id="minimapWrapper">
+        <canvas id="minimapCanvas"></canvas>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen">
+        <div class="loading-container">
+            <div class="loading-text">Loading Car Model</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar"></div>
+            </div>
+            <div class="loading-info">Please wait...</div>
+        </div>
+    </div>
+
+    <div id="drivingUI">
+        <div id="speedometer">
+            <div class="speed-value">0</div>
+            <div class="speed-unit">km/h</div>
+        </div>        <div id="car-info">
+            <div id="current-car-name">Select a car</div>
+        </div>
+        <div id="map-info">
+            <div id="current-map-name">Loading map...</div>
+            <div id="map-description" class="map-description">Please wait while the map loads</div>
+        </div>
+        <div id="map-notification" class="map-notification"></div>
+        <div id="driving-controls">
+            <div class="controls-title">Controls:</div>
+            <div class="control-row"><span>W/↑</span><span>Accelerate</span></div>
+            <div class="control-row"><span>S/↓</span><span>Reverse</span></div>
+            <div class="control-row"><span>A/←</span><span>Turn Left</span></div>
+            <div class="control-row"><span>D/→</span><span>Turn Right</span></div>
+            <div class="control-row"><span>Space</span><span>Brake</span></div>
+            <div class="control-row"><span>Z/X</span><span>Prev/Next Map</span></div>
+            <div class="control-row"><span>M/P</span><span>Toggle Music</span></div>
+            <div class="control-row"><span>N/B</span><span>Next/Prev Track</span></div>
+            <div class="control-row"><span>+/-</span><span>Volume Up/Down</span></div>
+            <div class="control-row"><span>Esc</span><span>Exit Vehicle</span></div>
+        </div>
+        <button id="exitButton">Exit Drive Mode</button>
+    </div>    <div id="carSettings">
+        <h3>Car Settings</h3>
+        <div id="settingsContent"></div>
+    </div>    <div id="musicPlayer">
+        <h3>Music</h3>
+        <div class="music-controls">
+            <button id="toggleMusic" class="music-button">Play Music</button>
+            <div class="track-controls">
+                <button id="prevTrack" class="track-button">&lt; Prev</button>
+                <button id="nextTrack" class="track-button">Next &gt;</button>
+            </div>
+            <div class="volume-container">
+                <label for="volumeSlider">Volume:</label>
+                <input type="range" id="volumeSlider" min="0" max="100" value="70">
+            </div>
+            <div class="track-info">
+                <div id="currentTrack">No track selected</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/driving.js"></script>
+</body>
+</html>
