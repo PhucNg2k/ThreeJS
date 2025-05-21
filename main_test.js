@@ -167,36 +167,41 @@ async function init() {
   
   // Key controls for walking only (driving controls moved to driving.js)
   const onKeyDown = (event) => {
-    if (controls.isLocked) {
-      if (event.code == "KeyH") {
-        cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
-      }
-      if (event.code === "KeyC") {
-        switchControlMode();
-        return;
-      }
-      if (event.code === "KeyP") {
-        controls.unlock();
-        startPanel.style.display = "block";
-      }
-
-      if (keys.hasOwnProperty(event.code)) {
+    // Update keys regardless of lock state
+    if (keys.hasOwnProperty(event.code)) {
         keys[event.code] = true;
-      }
-    
-    
-      const key = characterControls.key;
-      switch ( event.code ) {
-        case 'ArrowUp': case 'KeyW': case 'KeyZ': key[ 0 ] = - 1; break;
-        case 'ArrowDown': case 'KeyS': key[ 0 ] = 1; break;
-        case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[ 1 ] = - 1; break;
-        case 'ArrowRight': case 'KeyD': key[ 1 ] = 1; break;
-        case 'ShiftLeft' : case 'ShiftRight' : key[ 2 ] = 1; break;
-      }
-
-      console.log("Keys: ", keys);
     }
-    
+
+    if (controls.isLocked) {
+        if (event.code == "KeyH") {
+            if (controlMode == "fly") {
+            cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
+            }
+        }
+        if (event.code === "KeyC") {
+            switchControlMode();
+            return;
+        }
+        if (event.code === "KeyP") {
+            if (controlMode == "fly") {
+              controls.unlock(); 
+            } else {
+
+            }
+
+            startPanel.style.display = "block";
+            return;
+        }
+        
+        const key = characterControls.key;
+        switch ( event.code ) {
+            case 'ArrowUp': case 'KeyW': case 'KeyZ': key[ 0 ] = - 1; break;
+            case 'ArrowDown': case 'KeyS': key[ 0 ] = 1; break;
+            case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[ 1 ] = - 1; break;
+            case 'ArrowRight': case 'KeyD': key[ 1 ] = 1; break;
+            case 'ShiftLeft' : case 'ShiftRight' : key[ 2 ] = 1; break;
+        }
+    }
   }
 
   const onKeyUp = (event) => {
@@ -222,11 +227,21 @@ async function init() {
 
   const startPanel = document.getElementById("startPanel");
   const startButton = document.getElementById("startButton");
-  startButton.addEventListener(
-    "click", () => {
-      controls.lock();
-      startPanel.style.display = "none";
-    }, false );
+  startButton.addEventListener("click", () => {
+    startPanel.style.display = "none";
+    if (controlMode === 'orbit') {
+        // In orbit mode, update target before locking
+        updateTarget();
+    } else { 
+        if (savedCameraState) {
+          // In free mode, restore saved camera state if exists
+          camera.position.copy(savedCameraState.position);
+          camera.quaternion.copy(savedCameraState.quaternion);
+        }
+    }
+
+    controls.lock();
+  }, false);
 
   /*
   LOCK EVENT:
@@ -245,24 +260,44 @@ UNLOCK EVENT:
   */
 
   controls.addEventListener("lock", (event) => {
-    console.log("(LOCK) EVENT")
+    console.log("(LOCK) EVENT");
     startPanel.style.display = "none";
 
     let carOptionPanel = document.getElementById("carOptionPanel");
-    carOptionPanel.style.display = "none"
+    carOptionPanel.style.display = "none";
+
+    // If in free mode and we have a saved state, restore it
+    if (controlMode === 'fly' && savedCameraState) {
+        camera.position.copy(savedCameraState.position);
+        camera.quaternion.copy(savedCameraState.quaternion);
+        // Recreate camPoint
+        if (camPoint) scene.remove(camPoint);
+        camPoint = getSphereSimple();
+        camPoint.name = "CamPoint";
+        scene.add(camPoint);
+        updateCameraPoint();
+    } else {
+
+    }
+
   });
 
   controls.addEventListener("unlock", (event) => {
-    console.log("(UNLOCK) EVENT")
+    console.log("(UNLOCK) EVENT");
     resetKeys();
 
-    if (savedCameraState) {
-        camera.position.copy(savedCameraState.position);
-        camera.quaternion.copy(savedCameraState.quaternion);
-        renderer.render(scene, camera);
-        //savedCameraState = null; // Clear after restoring
-      }
-    
+    // Save camera state when unlocking in free mode
+    if (controlMode === 'fly') {
+        savedCameraState = {
+            position: camera.position.clone(),
+            quaternion: camera.quaternion.clone(),
+            direction: new THREE.Vector3()
+        };
+        camera.getWorldDirection(savedCameraState.direction);
+    } else {
+
+    }
+
   });
 
   renderer.shadowMap.enabled = true;
@@ -1224,44 +1259,45 @@ function loadModel() {
 
   function switchControlMode() {
     if (controlMode === 'orbit') {
-      // Save camera state before switching to fly mode
-      savedCameraState = {
-        position: camera.position.clone(),
-        quaternion: camera.quaternion.clone(),
-        direction: new THREE.Vector3()
-      };
-      camera.getWorldDirection(savedCameraState.direction);
+        // Save camera state before switching to fly mode
+        savedCameraState = {
+            position: camera.position.clone(),
+            quaternion: camera.quaternion.clone(),
+            direction: new THREE.Vector3()
+        };
+        camera.getWorldDirection(savedCameraState.direction);
 
-      // Switch to fly mode
-      controlMode = 'fly';
-      chaOrbitControls.enabled = false;
-      chaOrbitControls.removeEventListener('change', onControlsChange);
-      
-      // Create new camPoint based on saved direction
-      if (camPoint) scene.remove(camPoint);
-      camPoint = getSphereSimple();
-      camPoint.name = "CamPoint";
-      scene.add(camPoint);
-      updateCameraPoint();
-      
-      controls.lock();
-      console.log("Switched to Free-Fly Camera");
+        // Switch to fly mode
+        controlMode = 'fly';
+        chaOrbitControls.enabled = false;
+        chaOrbitControls.removeEventListener('change', onControlsChange);
+        
+        // Create new camPoint based on saved direction
+        if (camPoint) scene.remove(camPoint);
+        camPoint = getSphereSimple();
+        camPoint.name = "CamPoint";
+        scene.add(camPoint);
+        updateCameraPoint();
+        
+        controls.lock();
+        console.log("Switched to Free-Fly Camera");
     } else {
-      // Switch back to orbit mode
-      controlMode = 'orbit';
-      chaOrbitControls.enabled = true;
-      chaOrbitControls.addEventListener('change', onControlsChange);
-      
-      // Remove camPoint in orbit mode
-      if (camPoint) {
-        scene.remove(camPoint);
-        camPoint = null;
-      }
-      
-      // Force camera to face model
-      updateOrbitTarget();
-      
-      console.log("Switched to Third-Person Orbit Camera");
+        // Switch back to orbit mode
+        controlMode = 'orbit';
+        chaOrbitControls.enabled = true;
+        chaOrbitControls.addEventListener('change', onControlsChange);
+        
+        // Remove camPoint in orbit mode
+        if (camPoint) {
+            scene.remove(camPoint);
+            camPoint = null;
+        }
+        
+        // Force camera to face model
+        updateOrbitTarget();
+        savedCameraState = null; // Clear saved state when switching to orbit
+        
+        console.log("Switched to Third-Person Orbit Camera");
     }
   }
 
