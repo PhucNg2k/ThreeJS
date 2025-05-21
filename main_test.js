@@ -18,14 +18,18 @@ const pointer = new THREE.Vector2();
 let INTERSECTED = null;
 let composer, outlinePass;
 
+let controlMode = "fly";
+let orbitTarget = new THREE.Vector3(0, 1, 0);
+let savedCameraState = null;
 
-let scene ,camera, orthoCamera, minimapRenderer, chaOrbitControls;
-
-let group, followGroup, model, skeleton, mixer, actions;
-
+let scene, camera, orthoCamera, minimapRenderer, chaOrbitControls, controls;
+let group, followGroup, skeleton, mixer, actions;
+let model = null;
 let cameraFlyMode = 'fly';
 let outlineMode = false;
-let isModelLoaded=false;
+let isModelLoaded = false;
+let dirCam = new THREE.Vector3();
+let camPoint = null;
 
 // Car array for tracking cars in the scene
 let cars = [];
@@ -81,9 +85,12 @@ async function init() {
   axesHelper.layers.set(1);
   scene.add(axesHelper);
 
-  const camPoint = getSphereSimple();
-  camPoint.name = "CamPoint";
-  scene.add(camPoint);
+  if (controlMode === 'fly') {
+    camPoint = getSphereSimple();
+    camPoint.name = "CamPoint";
+    scene.add(camPoint);
+    updateCameraPoint();
+  }
 
   group = new THREE.Group();
   group.name = "CharacterGroup"
@@ -129,9 +136,16 @@ async function init() {
 
   scene.add(orthoCamera);
 
-  const controls = new PointerLockControls(camera, renderer.domElement);
+  setupControls(renderer);
 
-  chaOrbitControls = new OrbitControls(camera, renderer.domElement );
+  const fakecamera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    1.0,
+    10000
+  );
+
+  chaOrbitControls = new OrbitControls(fakecamera, renderer.domElement );
   chaOrbitControls.target.set( 0, 1, 0 );
   chaOrbitControls.enableDamping = true;
   chaOrbitControls.enablePan = false;
@@ -157,25 +171,32 @@ async function init() {
       if (event.code == "KeyH") {
         cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
       }
+      if (event.code === "KeyC") {
+        switchControlMode();
+        return;
+      }
       if (event.code === "KeyP") {
         controls.unlock();
         startPanel.style.display = "block";
       }
+
       if (keys.hasOwnProperty(event.code)) {
         keys[event.code] = true;
       }
     
     
-      const key = controls.key;
+      const key = characterControls.key;
       switch ( event.code ) {
-
         case 'ArrowUp': case 'KeyW': case 'KeyZ': key[ 0 ] = - 1; break;
         case 'ArrowDown': case 'KeyS': key[ 0 ] = 1; break;
         case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[ 1 ] = - 1; break;
         case 'ArrowRight': case 'KeyD': key[ 1 ] = 1; break;
         case 'ShiftLeft' : case 'ShiftRight' : key[ 2 ] = 1; break;
       }
+
+      console.log("Keys: ", keys);
     }
+    
   }
 
   const onKeyUp = (event) => {
@@ -184,7 +205,7 @@ async function init() {
         keys[event.code] = false;
       }
 
-      const key = controls.key;
+      const key = characterControls.key;
       switch ( event.code ) {
 
         case 'ArrowUp': case 'KeyW': case 'KeyZ': key[ 0 ] = key[ 0 ] < 0 ? 0 : key[ 0 ]; break;
@@ -223,7 +244,6 @@ UNLOCK EVENT:
 
   */
 
-  let savedCameraState = null;
   controls.addEventListener("lock", (event) => {
     console.log("(LOCK) EVENT")
     startPanel.style.display = "none";
@@ -249,7 +269,7 @@ UNLOCK EVENT:
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   // Load cars and add them to our cars array for tracking
-  const mclarenCar = await loadGLTFModel("mclaren/draco/chassis.gltf");
+  
 
   // Load Aspark Owl car model
   const asparkCar = await loadGLTFModel(
@@ -266,56 +286,6 @@ UNLOCK EVENT:
     "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf"
   );
   ferrariCar.name = "FerrariMonzaSP1";
-
-  // Load wheels for each car
-  const wheelFrontLeft1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-  const wheelFrontRight1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-  const wheelBackLeft1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-  const wheelBackRight1 = await loadGLTFModel("mclaren/draco/wheel.gltf");
-  // Scale wheels appropriately - reduced wheel scale to match chassis
-  const wheelScale = 1; // Reduced from 20 to make wheels proportional to chassis
-  const wheels = [
-    wheelFrontLeft1,
-    wheelFrontRight1,
-    wheelBackLeft1,
-    wheelBackRight1,
-  ];
-
-  wheels.forEach((wheel) => {
-    wheel.scale.set(wheelScale, wheelScale, wheelScale);
-    wheel.castShadow = true;
-    mclarenCar.add(wheel);
-  });
-
-  wheelFrontLeft1.position.set(
-    0.78 * wheelScale,
-    0.3 * wheelScale,
-    1.25 * wheelScale
-  );
-  wheelFrontRight1.position.set(
-    -0.78 * wheelScale,
-    0.3 * wheelScale,
-    1.25 * wheelScale
-  );
-  wheelBackLeft1.position.set(
-    0.75 * wheelScale,
-    0.3 * wheelScale,
-    -1.32 * wheelScale
-  );
-  wheelBackRight1.position.set(
-    -0.75 * wheelScale,
-    0.3 * wheelScale,
-    -1.32 * wheelScale
-  ); // Position wheels for Car 2
-
-  // Keep track of wheels in the car objects for rotation during driving
-  mclarenCar.userData.wheels = wheels;
-
-  // Setup car physics properties
-  mclarenCar.name = "MclarenDraco";
-  mclarenCar.userData.velocity = new THREE.Vector3();
-  mclarenCar.userData.acceleration = new THREE.Vector3();
-  mclarenCar.userData.direction = new THREE.Vector3(0, 0, 1);
 
   // Setup Aspark Owl physics properties
   asparkCar.userData.velocity = new THREE.Vector3();
@@ -336,36 +306,27 @@ UNLOCK EVENT:
   // Add wheels property to Ferrari car
   ferrariCar.userData.wheels = [];
 
-  // Scale the McLaren models appropriately - significantly increased to make chassis larger relative to wheels
-  mclarenCar.scale.set(150, 150, 150);
   // Scale the Aspark model to match the size of the other cars
   asparkCar.scale.set(150, 150, 150);
   bugattiCar.scale.set(150, 150, 150);
   ferrariCar.scale.set(14000, 14000, 14000);
 
   // Get car size after scaling
-  let carSize = new THREE.Box3().setFromObject(mclarenCar);
+  let carSize = new THREE.Box3().setFromObject(asparkCar);
   let carWidth = carSize.max.x - carSize.min.x;
   let carHeight = carSize.max.y - carSize.min.y;
 
   // Position cars
-  mclarenCar.position.set(0, 0, 0);
   asparkCar.position.set(carWidth + 500, 0, 0);
   bugattiCar.position.set(-(carWidth + 500), 0, 0);
   ferrariCar.position.set(-(carWidth + 1000), 0, 0);
 
   // Rotate cars to face forward (adjust as needed for the McLaren model)
-  mclarenCar.rotation.y = Math.PI;
   asparkCar.rotation.y = Math.PI; // Adjust as needed for the Aspark model
   bugattiCar.rotation.y = Math.PI;
   ferrariCar.rotation.y = Math.PI;
 
-  mclarenCar.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = false;
-    }
-  });
+
 
   asparkCar.traverse((child) => {
     if (child.isMesh) {
@@ -388,13 +349,13 @@ UNLOCK EVENT:
     }
   });
 
-  //scene.add(mclarenCar);
-  scene.add(asparkCar); // Add the Aspark car to the scene
-  scene.add(bugattiCar); // Add the Bugatti car to the scene
-  scene.add(ferrariCar); // Add the Ferrari car to the scene
+
+  
+  //scene.add(asparkCar); // Add the Aspark car to the scene
+  //scene.add(bugattiCar); // Add the Bugatti car to the scene
+  //scene.add(ferrariCar); // Add the Ferrari car to the scene
 
   // Add cars to array for tracking and selection
-  //cars.push(mclarenCar);
   cars.push(asparkCar); // Add the Aspark car to the cars array
   cars.push(bugattiCar); // Add the Bugatti car to the cars array
   cars.push(ferrariCar); // Add the Ferrari car to the cars array
@@ -451,7 +412,7 @@ UNLOCK EVENT:
   groundTexture.needsUpdate = true;
 
   scene.add(plane);
-  mclarenCar.position.y = 10; // Raise car slightly above ground level
+  // Raise car slightly above ground level
   asparkCar.position.y = 5; // Raise Aspark car slightly above ground level
   bugattiCar.position.y = 5; // Raise Bugatti car slightly above ground level
   ferrariCar.position.y = 5; // Raise Ferrari car slightly above ground level
@@ -553,6 +514,11 @@ UNLOCK EVENT:
     setTimeout(() => {
       checkIntersection(RayCastObjects);
     }, 300);
+
+    if (controlMode === 'orbit') {
+      controls.lock();
+    }
+    
   });
 
   let dirCam = new THREE.Vector3();
@@ -563,7 +529,7 @@ UNLOCK EVENT:
 
   setupOutlineEffect(renderer, scene, camera);
 
-  //animate();
+  animate();
 
   function createRayCastObjects() {
     let raycastObjects = [];
@@ -662,47 +628,37 @@ UNLOCK EVENT:
 //--------------------
 
 function loadModel() {
-
     const loader = new GLTFLoader();
     loader.load( 'models/gltf/Soldier.glb', function ( gltf ) {
 
-
       model = gltf.scene;
       group.add( model );
+      
+      // Scale the model 1000 times bigger
+      model.scale.set(100, 100, 100);
+      
       model.rotation.y = PI;
       group.rotation.y = PI;
 
       model.traverse( function ( object ) {
-
         if ( object.isMesh ) {
-
           if ( object.name == 'vanguard_Mesh' ) {
-
             object.castShadow = true;
             object.receiveShadow = true;
             object.material.shadowSide = THREE.DoubleSide;
-            //object.material.envMapIntensity = 0.5;
             object.material.metalness = 1.0;
             object.material.roughness = 0.2;
             object.material.color.set( 1, 1, 1 );
             object.material.metalnessMap = object.material.map;
-
           } else {
-
             object.material.metalness = 1;
             object.material.roughness = 0;
             object.material.transparent = true;
             object.material.opacity = 0.8;
             object.material.color.set( 1, 1, 1 );
-
           }
-
-          console.log("Character: ", object)
         }
-        
       } );
-
-      //
 
       skeleton = new THREE.SkeletonHelper( model );
       skeleton.visible = true;
@@ -743,15 +699,13 @@ function loadModel() {
       isModelLoaded = true;
       console.log('Model loaded:', model);
       console.log('Actions:', actions);
-      //animate();
     },
     undefined,
     function (error) {
       console.error('Failed to load Soldier.glb:', error);
       isModelLoaded = false;
     } );
-
-  }
+}
 
   function updateCharacterAnimation(play) {
     if (characterControls.current !== play) {
@@ -824,9 +778,10 @@ function loadModel() {
 
 //---------------------
   function updateCamera() {
-    // Driving is now handled in driving.js, so we only need the non-driving updates here
-    updateControlMove(keys);
-    updateCameraPoint();
+    if (controlMode === 'fly') {
+      updateControlMove(keys);
+      updateCameraPoint();
+    }
   }
 
   function enterCarDriving(car) {
@@ -1062,20 +1017,21 @@ function loadModel() {
 
   function getCameraLookingAt(pointer, distance = 150, usePointer = false) {
     if (usePointer && !controls.isLocked) {
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(pointer, camera);
-      const direction = raycaster.ray.direction.clone().normalize();
-      const pointLookingAt = camera.position
-        .clone()
-        .add(direction.multiplyScalar(distance));
-      return pointLookingAt;
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(pointer, camera);
+        const direction = raycaster.ray.direction.clone().normalize();
+        const pointLookingAt = camera.position
+            .clone()
+            .add(direction.multiplyScalar(distance));
+        return pointLookingAt;
     } else {
-      camera.getWorldDirection(dirCam);
-      dirCam.normalize();
-      const pointLookingAt = camera.position
-        .clone()
-        .add(dirCam.multiplyScalar(distance));
-      return pointLookingAt;
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        direction.normalize();
+        const pointLookingAt = camera.position
+            .clone()
+            .add(direction.multiplyScalar(distance));
+        return pointLookingAt;
     }
   }
 
@@ -1092,56 +1048,68 @@ function loadModel() {
   }
 
   function updateControlMove(keys) {
-      const moveSpeed = 500;
-      const delta = Math.min(clock.getDelta(), 0.1);
-      const speed = delta * moveSpeed;
-  
-      // Get direction and right vector once
-      const forward = new THREE.Vector3();
-      const right = new THREE.Vector3();
-      const up = new THREE.Vector3(0, 1, 0);
-  
-      camera.getWorldDirection(forward).normalize();
-      right.crossVectors(up, forward).normalize();
-  
-      // Project movement vectors to XZ plane if in 'strict' mode
-      if (cameraFlyMode === 'strict') {
-        forward.y = 0;
-        right.y = 0;
-        forward.normalize();
-        right.normalize();
-      }
-  
-      const movement = new THREE.Vector3();
-  
-      if (keys.KeyW) movement.add(forward);
-      if (keys.KeyS) movement.addScaledVector(forward, -1);
-      if (keys.KeyA) movement.add(right);
-      if (keys.KeyD) movement.addScaledVector(right, -1);
-  
-      movement.normalize().multiplyScalar(speed);
+    const moveSpeed = 10; // Base speed value
+
+    const delta = Math.min(clock.getDelta(), 0.1);
+    const speed = delta * moveSpeed;
+
+    // Get direction and right vector once
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+
+    camera.getWorldDirection(forward).normalize();
+    right.crossVectors(up, forward).normalize();
+
+    // Project movement vectors to XZ plane if in 'strict' mode
+    if (cameraFlyMode === "strict") {
+      forward.y = 0;
+      right.y = 0;
+      forward.normalize();
+      right.normalize();
+    }
+
+    const movement = new THREE.Vector3();
+    
+    if (keys.KeyW) movement.add(forward);
+    if (keys.KeyS) movement.addScaledVector(forward, -1);
+    if (keys.KeyA) movement.add(right);
+    if (keys.KeyD) movement.addScaledVector(right, -1);
+
+    // Only apply movement if there is any
+    if (movement.length() > 0) {
+       movement.normalize().multiplyScalar(moveSpeed);
       camera.position.add(movement);
-  
-      if (cameraFlyMode === 'strict') {
-        camera.position.y = carHeight - 50;
-      }
+    }
+
+    
+
+    if (cameraFlyMode === "strict") {
+      camera.position.y = carHeight - 50;
+    }
   }
 
 
 
   function updateCameraPoint() {
-    trackCameraPoint(camPoint);
+    if (controlMode === 'fly' && camPoint) {
+      const point = getCameraLookingAt(pointer, 150, false);
+      camPoint.position.copy(point);
+    }
   }
 
   function animate() {
-    const delta = clock.getDelta();
     requestAnimationFrame(animate);
+    const delta = clock.getDelta();
 
-    updateCamera();
-    //updateMapCamera();
-
-    updateCharacter(delta);
-
+    if (controlMode === 'orbit') {
+        updateOrbitTarget();
+        chaOrbitControls.update();
+    } else if (controlMode === 'fly' && controls.isLocked) {
+        updateControlMove(keys);
+        if (camPoint) updateCameraPoint();
+    }
+    
     render();
     renderMap();
   }
@@ -1252,6 +1220,110 @@ function loadModel() {
     minimapRenderer.setScissorTest(false);
     }
   
+
+
+  function switchControlMode() {
+    if (controlMode === 'orbit') {
+      // Save camera state before switching to fly mode
+      savedCameraState = {
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+        direction: new THREE.Vector3()
+      };
+      camera.getWorldDirection(savedCameraState.direction);
+
+      // Switch to fly mode
+      controlMode = 'fly';
+      chaOrbitControls.enabled = false;
+      chaOrbitControls.removeEventListener('change', onControlsChange);
+      
+      // Create new camPoint based on saved direction
+      if (camPoint) scene.remove(camPoint);
+      camPoint = getSphereSimple();
+      camPoint.name = "CamPoint";
+      scene.add(camPoint);
+      updateCameraPoint();
+      
+      controls.lock();
+      console.log("Switched to Free-Fly Camera");
+    } else {
+      // Switch back to orbit mode
+      controlMode = 'orbit';
+      chaOrbitControls.enabled = true;
+      chaOrbitControls.addEventListener('change', onControlsChange);
+      
+      // Remove camPoint in orbit mode
+      if (camPoint) {
+        scene.remove(camPoint);
+        camPoint = null;
+      }
+      
+      // Force camera to face model
+      updateOrbitTarget();
+      
+      console.log("Switched to Third-Person Orbit Camera");
+    }
+  }
+
+  // Add this function to handle control changes
+  function onControlsChange() {
+    if (controlMode === 'orbit') {
+      checkIntersection(RayCastObjects);
+    }
+  }
+
+  // Update the controls setup in init()
+  function setupControls(renderer) {
+    controls = new PointerLockControls(camera, renderer.domElement);
+    
+    chaOrbitControls = new OrbitControls(camera, renderer.domElement);
+    chaOrbitControls.enableDamping = true;
+    chaOrbitControls.enablePan = false;
+    chaOrbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
+    chaOrbitControls.addEventListener('change', onControlsChange);
+    
+    // Set initial orbit position
+    updateOrbitTarget();
+    
+    // Initially disable the controls based on mode
+    if (controlMode === 'fly') {
+      chaOrbitControls.enabled = false;
+    } else {
+      controls.unlock();
+    }
+  }
+
+  function updateOrbitTarget() {
+    if (model) {
+      // Get model's world position
+      const modelPosition = new THREE.Vector3();
+      model.getWorldPosition(modelPosition);
+      
+      // Position camera behind and above the model
+      const distance = 400;  // Further back to see more of the environment
+      const height = 250;    // Higher up to see over the character
+      const forwardOffset = 50;  // Slight forward offset to see more ahead
+
+      // Get model's forward direction (negative Z axis since model faces Z)
+      const modelForward = new THREE.Vector3(0, 0, 1);
+      modelForward.applyQuaternion(model.quaternion);
+      
+      // Position camera behind the model
+      camera.position.copy(modelPosition);
+      camera.position.sub(modelForward.multiplyScalar(distance));
+      camera.position.y += height;
+
+      // Offset the target point slightly forward and up for better view
+      modelPosition.add(modelForward.normalize().multiplyScalar(forwardOffset));
+      modelPosition.y += 50;  // Look slightly above the character
+
+      chaOrbitControls.target.copy(modelPosition);
+      camera.lookAt(modelPosition);
+      chaOrbitControls.update();
+    }
+  }
+
+
 }
 
 init();
