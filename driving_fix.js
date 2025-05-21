@@ -1,0 +1,1078 @@
+import * as THREE from "three";
+import Stats from "three/addons/libs/stats.module.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { OutlinePass } from "three/addons/postprocessing/OutlinePass.js";
+import GUI from "lil-gui";
+
+// Cars array and selected car
+let cars = [];
+let selectedCar = null;
+
+// Audio player for background music
+let musicEnabled = false;
+let backgroundMusic = null;
+let musicVolume = 0.7; // Default volume (0-1)
+let currentTrackInfo = "No track selected";
+let currentTrackIndex = 0; // Track the current song index
+
+// Available music tracks
+const musicTracks = [
+  { url: "/audio/driving_music_1.mp3", name: "Driving Theme 1" },
+  { url: "/audio/driving_music_2.mp3", name: "Driving Theme 2" },
+  { url: "/audio/driving_music_3.mp3", name: "Driving Theme 3" },
+];
+
+// Car driving variables
+let isDriving = true;
+let carSpeed = 0;
+let carMaxSpeed = 15;
+let carAcceleration = 0.2;
+let carDeceleration = 0.1;
+let carTurnSpeed = 0.03;
+let thirdPersonCameraDistance = 300;
+let thirdPersonCameraHeight = 350;
+let cameraLerpFactor = 0.1;
+let carControls = {
+  forward: false,
+  backward: false,
+  left: false,
+  right: false,
+  brake: false,
+};
+
+// Camera variables for smooth transitions
+let prevCameraTarget = new THREE.Vector3();
+let prevLookAtPoint = new THREE.Vector3();
+let targetCameraRotationZ = 0;
+let currentTurnInfluence = 0;
+
+// Main scene components
+let renderer, camera, scene, stats;
+let composer, outlinePass;
+let clock = new THREE.Clock();
+let settingsGui;
+
+// URL parameters for car selection
+const urlParams = new URLSearchParams(window.location.search);
+const carId = urlParams.get("car");
+
+// Loading screen management
+const loadingManager = new THREE.LoadingManager();
+const loadingScreen = document.getElementById("loadingScreen");
+const progressBar = document.querySelector(".progress-bar");
+const loadingInfo = document.querySelector(".loading-info");
+
+loadingManager.onProgress = function (url, itemsLoaded, itemsTotal) {
+  const progress = (itemsLoaded / itemsTotal) * 100;
+  progressBar.style.width = progress + "%";
+  loadingInfo.textContent = `Loading: ${Math.round(
+    progress
+  )}% (${itemsLoaded}/${itemsTotal})`;
+};
+
+loadingManager.onLoad = function () {
+  // Fade out the loading screen
+  loadingScreen.style.opacity = 0;
+  // Hide it completely after transition
+  setTimeout(() => {
+    loadingScreen.style.display = "none";
+  }, 500);
+};
+
+loadingManager.onError = function (url) {
+  console.error("Error loading:", url);
+  loadingInfo.textContent = `Error loading resource: ${url.split("/").pop()}`;
+  loadingInfo.style.color = "#ff3a3a";
+};
+
+// Initialize the scene
+async function init() {
+  // Create renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  // Stats for performance monitoring
+  stats = new Stats();
+  document.getElementById("webgl").appendChild(stats.dom);
+  document.getElementById("webgl").appendChild(renderer.domElement);
+
+  // Create camera
+  camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    1.0,
+    10000
+  );
+  camera.updateProjectionMatrix();
+
+  // Create scene
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x4287f5); // Blue sky
+  scene.add(new THREE.AxesHelper(100)); // Helper for orientation
+
+  // Initialize audio system
+  setupAudio();
+
+  // Add lighting
+  setupLighting();
+
+  // Load ground texture
+  const groundTexture = await loadTexture("cracked-cement.jpg");
+
+  // Create ground plane
+  createGroundPlane(groundTexture);
+
+  // Load car models
+  await loadCars();
+
+  // Set car from URL parameter if provided, otherwise use first car
+  if (carId && parseInt(carId) >= 0 && parseInt(carId) < cars.length) {
+    selectedCar = cars[parseInt(carId)];
+  } else {
+    selectedCar = cars[0]; // Default to first car
+  }
+
+  // Set camera position initially
+  updateCarFollowCamera(true);
+
+  // Setup post-processing
+  setupPostProcessing();
+
+  // Event listeners
+  setupEventListeners();
+
+  // Create GUI for car settings
+  createSettingsGUI();
+
+  // Display car name
+  document.getElementById("current-car-name").textContent = selectedCar
+    ? selectedCar.name
+    : "Unknown Car";
+
+  // Start animation loop
+  animate();
+}
+
+function setupAudio() {
+  try {
+    // Initialize the audio listener and add it to the camera
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+
+    // Create a global audio source
+    backgroundMusic = new THREE.Audio(listener);
+
+    // Load a sound and set it as the Audio object's buffer
+    const audioLoader = new THREE.AudioLoader();
+
+    // Start with the first track (index 0) instead of random
+    const selectedTrack = musicTracks[currentTrackIndex];
+
+    // Display the selected track name
+    currentTrackInfo = selectedTrack.name;
+    document.getElementById("currentTrack").textContent = currentTrackInfo;
+
+    // Load and set up the audio
+    audioLoader.load(
+      selectedTrack.url,
+      function (buffer) {
+        backgroundMusic.setBuffer(buffer);
+        backgroundMusic.setLoop(true);
+        backgroundMusic.setVolume(musicVolume);
+
+        // Enable all music control buttons
+        document.getElementById("toggleMusic").disabled = false;
+        document.getElementById("prevTrack").disabled = false;
+        document.getElementById("nextTrack").disabled = false;
+
+        // Do not autoplay - wait for user interaction
+        console.log("Music loaded: " + selectedTrack.name);
+      },
+      function (xhr) {
+        // Progress callback
+        if (xhr.lengthComputable) {
+          console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+        }
+      },
+      function (err) {
+        // Error callback
+        handleAudioLoadError(err, selectedTrack.name);
+      }
+    );
+
+    // Set up button event listeners
+    document
+      .getElementById("toggleMusic")
+      .addEventListener("click", toggleMusic);
+    document
+      .getElementById("prevTrack")
+      .addEventListener("click", () => changeTrack("prev"));
+    document
+      .getElementById("nextTrack")
+      .addEventListener("click", () => changeTrack("next"));
+    document
+      .getElementById("volumeSlider")
+      .addEventListener("input", updateVolume);
+  } catch (error) {
+    console.error("Error setting up audio system:", error);
+    document.getElementById("currentTrack").textContent =
+      "Audio system unavailable";
+    document.getElementById("toggleMusic").disabled = true;
+    document.getElementById("prevTrack").disabled = true;
+    document.getElementById("nextTrack").disabled = true;
+  }
+}
+
+function handleAudioLoadError(error, trackName) {
+  console.error(`Error loading track "${trackName}":`, error);
+  document.getElementById(
+    "currentTrack"
+  ).innerHTML = `<span style="color:#ff3a3a">Audio file missing</span><br>
+     <span style="font-size:10px">See /audio/README.md</span>`;
+
+  // Disable all music control buttons
+  const toggleMusicBtn = document.getElementById("toggleMusic");
+  toggleMusicBtn.disabled = true;
+  toggleMusicBtn.textContent = "Audio Unavailable";
+  toggleMusicBtn.style.backgroundColor = "#666";
+
+  document.getElementById("prevTrack").disabled = true;
+  document.getElementById("nextTrack").disabled = true;
+
+  // Show alert with instructions on first error only
+  if (!window.audioErrorShown) {
+    window.audioErrorShown = true;
+    setTimeout(() => {
+      alert(
+        "Audio files are missing!\n\nTo enable music while driving, please add MP3 files to the audio folder. See the README.md file in that folder for instructions."
+      );
+    }, 1000);
+  }
+}
+
+function toggleMusic() {
+  const toggleBtn = document.getElementById("toggleMusic");
+
+  if (toggleBtn.disabled) {
+    return; // Do nothing if the button is disabled
+  }
+
+  if (!musicEnabled) {
+    // Start music
+    if (backgroundMusic && backgroundMusic.buffer) {
+      try {
+        backgroundMusic.play();
+        musicEnabled = true;
+        toggleBtn.textContent = "Pause Music";
+        toggleBtn.classList.add("playing");
+      } catch (error) {
+        console.error("Error playing music:", error);
+        alert(
+          "There was an error playing the music. This might be due to the browser's autoplay policy. Try clicking the play button again."
+        );
+      }
+    } else {
+      console.error("Music not loaded yet");
+      document.getElementById("currentTrack").textContent =
+        "Music loading... please wait";
+    }
+  } else {
+    // Pause music
+    if (backgroundMusic) {
+      backgroundMusic.pause();
+      musicEnabled = false;
+      toggleBtn.textContent = "Play Music";
+      toggleBtn.classList.remove("playing");
+    }
+  }
+}
+
+function updateVolume() {
+  const volumeSlider = document.getElementById("volumeSlider");
+  musicVolume = volumeSlider.value / 100;
+
+  if (backgroundMusic) {
+    backgroundMusic.setVolume(musicVolume);
+  }
+}
+
+// Function to change tracks (next or previous)
+function changeTrack(direction) {
+  // Calculate the new track index
+  const wasPlaying = musicEnabled;
+  let newIndex = currentTrackIndex;
+
+  if (direction === "next") {
+    newIndex = (currentTrackIndex + 1) % musicTracks.length;
+  } else if (direction === "prev") {
+    newIndex =
+      (currentTrackIndex - 1 + musicTracks.length) % musicTracks.length;
+  }
+
+  // Only change if it's a different track
+  if (newIndex === currentTrackIndex) return;
+
+  // If music was playing, pause it first
+  if (musicEnabled && backgroundMusic) {
+    backgroundMusic.pause();
+  }
+
+  // Update the current track index
+  currentTrackIndex = newIndex;
+  const selectedTrack = musicTracks[currentTrackIndex];
+
+  // Update the UI
+  currentTrackInfo = selectedTrack.name;
+  document.getElementById("currentTrack").textContent = currentTrackInfo;
+
+  // Load the new track
+  const audioLoader = new THREE.AudioLoader();
+
+  // Show loading indicator
+  document.getElementById(
+    "currentTrack"
+  ).textContent = `Loading: ${selectedTrack.name}...`;
+
+  // Temporarily disable buttons
+  document.getElementById("toggleMusic").disabled = true;
+  document.getElementById("prevTrack").disabled = true;
+  document.getElementById("nextTrack").disabled = true;
+
+  // Load the new audio
+  audioLoader.load(
+    selectedTrack.url,
+    function (buffer) {
+      backgroundMusic.setBuffer(buffer);
+      backgroundMusic.setLoop(true);
+      backgroundMusic.setVolume(musicVolume);
+
+      // Re-enable buttons
+      document.getElementById("toggleMusic").disabled = false;
+      document.getElementById("prevTrack").disabled = false;
+      document.getElementById("nextTrack").disabled = false;
+
+      // Update the UI
+      document.getElementById("currentTrack").textContent = selectedTrack.name;
+
+      // If music was playing before, auto-play the new track
+      if (wasPlaying) {
+        backgroundMusic.play();
+        musicEnabled = true;
+        document.getElementById("toggleMusic").textContent = "Pause Music";
+        document.getElementById("toggleMusic").classList.add("playing");
+      }
+
+      console.log(`Changed to track: ${selectedTrack.name}`);
+    },
+    function (xhr) {
+      // Progress callback
+      if (xhr.lengthComputable) {
+        console.log(
+          `Loading ${selectedTrack.name}: ${Math.round(
+            (xhr.loaded / xhr.total) * 100
+          )}% complete`
+        );
+      }
+    },
+    function (error) {
+      // Error callback
+      handleAudioLoadError(error, selectedTrack.name);
+    }
+  );
+}
+
+function setupLighting() {
+  // Add ambient light
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+  scene.add(ambientLight);
+
+  // Add directional light
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(500, 766, -1200);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 1024;
+  directionalLight.shadow.mapSize.height = 1024;
+  directionalLight.shadow.camera.near = 100;
+  directionalLight.shadow.camera.far = 2000;
+  directionalLight.shadow.camera.left = -1000;
+  directionalLight.shadow.camera.right = 1000;
+  directionalLight.shadow.camera.top = 1000;
+  directionalLight.shadow.camera.bottom = -1000;
+  scene.add(directionalLight);
+
+  // Add spotlight for dramatic lighting
+  const spotLight = new THREE.SpotLight(0xffff00, 10000);
+  spotLight.position.set(500, 800, -1200);
+  spotLight.angle = Math.PI / 6;
+  spotLight.penumbra = 0.3;
+  spotLight.decay = 2;
+  spotLight.distance = 3000;
+  spotLight.castShadow = true;
+  spotLight.shadow.mapSize.width = 1024;
+  spotLight.shadow.mapSize.height = 1024;
+  spotLight.shadow.camera.near = 10;
+  spotLight.shadow.camera.far = spotLight.distance;
+  scene.add(spotLight);
+}
+
+function loadTexture(path) {
+  return new Promise((resolve, reject) => {
+    // Use path as-is since files in public are served at root
+    const fullPath = path.startsWith("/") ? path : `/${path}`;
+    console.log(`Loading texture from: ${fullPath}`);
+
+    new THREE.TextureLoader(loadingManager).load(
+      fullPath,
+      (texture) => {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(100, 100); // Tile the texture
+        texture.anisotropy = 16; // Better texture quality at angles
+        resolve(texture);
+      },
+      undefined,
+      (err) => {
+        console.error(`Error loading texture from ${fullPath}:`, err);
+        reject(err);
+      }
+    );
+  });
+}
+
+function createGroundPlane(groundTexture) {
+  // Create a large ground plane
+  const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
+  const planeMaterial = new THREE.MeshStandardMaterial({
+    map: groundTexture,
+    roughness: 0.8,
+    metalness: 0.2,
+  });
+  planeMaterial.receiveShadow = true;
+
+  const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+  plane.position.y = -5.0;
+  plane.rotation.x = -Math.PI / 2;
+  plane.receiveShadow = true;
+
+  scene.add(plane);
+}
+
+async function loadCars() {
+  // Load all car models
+  try {
+    // McLaren car
+    const mclarenCar = await loadGLTFModel("mclaren/draco/chassis.gltf");
+    mclarenCar.name = "McLaren";
+    setupCarPhysics(mclarenCar);
+
+    // Add wheels to McLaren
+    const wheels = await loadMcLarenWheels();
+    wheels.forEach((wheel) => mclarenCar.add(wheel));
+    mclarenCar.userData.wheels = wheels;
+
+    // Aspark Owl car
+    const asparkCar = await loadGLTFModel(
+      "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf"
+    );
+    asparkCar.name = "Aspark Owl";
+    setupCarPhysics(asparkCar);
+
+    // Bugatti car
+    const bugattiCar = await loadGLTFModel(
+      "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf"
+    );
+    bugattiCar.name = "Bugatti Bolide";
+    setupCarPhysics(bugattiCar);
+
+    // Ferrari car
+    const ferrariCar = await loadGLTFModel(
+      "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf"
+    );
+    ferrariCar.name = "Ferrari Monza SP1";
+    setupCarPhysics(ferrariCar);
+
+    // Scale and position the cars
+    mclarenCar.scale.set(150, 150, 150);
+    asparkCar.scale.set(150, 150, 150);
+    bugattiCar.scale.set(150, 150, 150);
+    ferrariCar.scale.set(14000, 14000, 14000);
+
+    // Position the cars next to each other with some spacing
+    mclarenCar.position.set(0, 5, 0);
+    asparkCar.position.set(500, 5, 0);
+    bugattiCar.position.set(1000, 5, 0);
+    ferrariCar.position.set(1500, 5, 0);
+
+    // Rotate cars to face forward
+    mclarenCar.rotation.y = Math.PI;
+    asparkCar.rotation.y = Math.PI;
+    bugattiCar.rotation.y = Math.PI;
+    ferrariCar.rotation.y = Math.PI;
+
+    // Add cars to scene and array
+    scene.add(mclarenCar);
+    scene.add(asparkCar);
+    scene.add(bugattiCar);
+    scene.add(ferrariCar);
+
+    cars.push(mclarenCar);
+    cars.push(asparkCar);
+    cars.push(bugattiCar);
+    cars.push(ferrariCar);
+  } catch (error) {
+    console.error("Error loading car models:", error);
+  }
+}
+
+function setupCarPhysics(car) {
+  // Setup car physics properties
+  car.userData.velocity = new THREE.Vector3();
+  car.userData.acceleration = new THREE.Vector3();
+  car.userData.direction = new THREE.Vector3(0, 0, 1);
+  car.userData.wheels = car.userData.wheels || [];
+
+  // Enable shadows for all car meshes
+  car.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = false;
+    }
+  });
+}
+
+async function loadMcLarenWheels() {
+  const wheelScale = 1;
+  try {
+    // Load wheel models
+    const wheelFrontLeft = await loadGLTFModel("mclaren/draco/wheel.gltf");
+    const wheelFrontRight = await loadGLTFModel("mclaren/draco/wheel.gltf");
+    const wheelBackLeft = await loadGLTFModel("mclaren/draco/wheel.gltf");
+    const wheelBackRight = await loadGLTFModel("mclaren/draco/wheel.gltf");
+
+    const wheels = [
+      wheelFrontLeft,
+      wheelFrontRight,
+      wheelBackLeft,
+      wheelBackRight,
+    ];
+
+    // Apply scale and shadows
+    wheels.forEach((wheel) => {
+      wheel.scale.set(wheelScale, wheelScale, wheelScale);
+      wheel.castShadow = true;
+
+      wheel.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+        }
+      });
+    });
+
+    // Position wheels
+    wheelFrontLeft.position.set(
+      0.78 * wheelScale,
+      0.3 * wheelScale,
+      1.25 * wheelScale
+    );
+    wheelFrontRight.position.set(
+      -0.78 * wheelScale,
+      0.3 * wheelScale,
+      1.25 * wheelScale
+    );
+    wheelBackLeft.position.set(
+      0.75 * wheelScale,
+      0.3 * wheelScale,
+      -1.32 * wheelScale
+    );
+    wheelBackRight.position.set(
+      -0.75 * wheelScale,
+      0.3 * wheelScale,
+      -1.32 * wheelScale
+    );
+
+    return wheels;
+  } catch (error) {
+    console.error("Error loading wheels:", error);
+    return [];
+  }
+}
+
+function loadGLTFModel(gltfPath) {
+  return new Promise((resolve, reject) => {
+    // Setup DRACO decoder
+    const dracoLoader = new DRACOLoader(loadingManager);
+    dracoLoader.setDecoderPath(
+      "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
+    );
+    dracoLoader.setDecoderConfig({ type: "js" });
+
+    // Setup GLTF loader
+    const gltfLoader = new GLTFLoader(loadingManager);
+    gltfLoader.setDRACOLoader(dracoLoader);
+
+    console.log(`Loading 3D model from: ${gltfPath}`);
+
+    gltfLoader.load(
+      gltfPath,
+      (gltf) => {
+        const model = gltf.scene;
+        console.log(`Successfully loaded model: ${gltfPath}`);
+        resolve(model);
+      },
+      (xhr) => {
+        if (xhr.lengthComputable) {
+          const percentComplete = ((xhr.loaded / xhr.total) * 100).toFixed(2);
+          console.log(`Loading ${gltfPath}: ${percentComplete}% complete`);
+        }
+      },
+      (error) => {
+        console.error(`Error loading model ${gltfPath}:`, error);
+        reject(error);
+      }
+    );
+  });
+}
+
+function setupPostProcessing() {
+  // Create effect composer and add render pass
+  const renderPass = new RenderPass(scene, camera);
+  outlinePass = new OutlinePass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    scene,
+    camera
+  );
+
+  composer = new EffectComposer(renderer);
+  composer.addPass(renderPass);
+  composer.addPass(outlinePass);
+
+  // Configure outline effect
+  outlinePass.edgeStrength = 3;
+  outlinePass.edgeGlow = 0.5;
+  outlinePass.edgeThickness = 1.0;
+  outlinePass.visibleEdgeColor.set(0xff0000);
+}
+
+function setupEventListeners() {
+  // Key events for driving controls
+  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("keyup", onKeyUp);
+  window.addEventListener("resize", onWindowResize);
+
+  // Exit button
+  document
+    .getElementById("exitButton")
+    .addEventListener("click", exitDrivingMode);
+}
+
+function onKeyDown(event) {
+  switch (event.code) {
+    case "KeyW":
+    case "ArrowUp":
+      carControls.forward = true;
+      break;
+    case "KeyS":
+    case "ArrowDown":
+      carControls.backward = true;
+      break;
+    case "KeyA":
+    case "ArrowLeft":
+      carControls.left = true;
+      break;
+    case "KeyD":
+    case "ArrowRight":
+      carControls.right = true;
+      break;
+    case "Space":
+      carControls.brake = true;
+      break;
+    case "KeyM":
+      // Toggle music with M key
+      toggleMusic();
+      break;
+    case "KeyP":
+      // Also toggle music with P key
+      toggleMusic();
+      break;
+    case "KeyN":
+      // Next track with N key
+      if (!document.getElementById("nextTrack").disabled) {
+        changeTrack("next");
+      }
+      break;
+    case "KeyB":
+      // Previous track with B key
+      if (!document.getElementById("prevTrack").disabled) {
+        changeTrack("prev");
+      }
+      break;
+    case "Equal": // + key
+      // Increase volume
+      const increaseVolumeSlider = document.getElementById("volumeSlider");
+      increaseVolumeSlider.value = Math.min(
+        100,
+        parseInt(increaseVolumeSlider.value) + 10
+      );
+      updateVolume();
+      break;
+    case "Minus": // - key
+      // Decrease volume
+      const decreaseVolumeSlider = document.getElementById("volumeSlider");
+      decreaseVolumeSlider.value = Math.max(
+        0,
+        parseInt(decreaseVolumeSlider.value) - 10
+      );
+      updateVolume();
+      break;
+    case "Escape":
+      exitDrivingMode();
+      break;
+  }
+}
+
+function onKeyUp(event) {
+  switch (event.code) {
+    case "KeyW":
+    case "ArrowUp":
+      carControls.forward = false;
+      break;
+    case "KeyS":
+    case "ArrowDown":
+      carControls.backward = false;
+      break;
+    case "KeyA":
+    case "ArrowLeft":
+      carControls.left = false;
+      break;
+    case "KeyD":
+    case "ArrowRight":
+      carControls.right = false;
+      break;
+    case "Space":
+      carControls.brake = false;
+      break;
+  }
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function createSettingsGUI() {
+  // Create GUI using lil-gui for car settings
+  settingsGui = new GUI({
+    container: document.getElementById("settingsContent"),
+    autoPlace: false,
+  });
+
+  const carFolder = settingsGui.addFolder("Performance");
+  carFolder
+    .add({ "Max Speed": carMaxSpeed }, "Max Speed", 5, 50)
+    .onChange((value) => {
+      carMaxSpeed = value;
+    });
+  carFolder
+    .add({ Acceleration: carAcceleration }, "Acceleration", 0.1, 1)
+    .onChange((value) => {
+      carAcceleration = value;
+    });
+  carFolder
+    .add({ "Turn Speed": carTurnSpeed }, "Turn Speed", 0.01, 0.1)
+    .onChange((value) => {
+      carTurnSpeed = value;
+    });
+  carFolder
+    .add({ "Braking Power": carDeceleration }, "Braking Power", 0.05, 0.5)
+    .onChange((value) => {
+      carDeceleration = value;
+    });
+
+  const cameraFolder = settingsGui.addFolder("Camera");
+  cameraFolder
+    .add({ Distance: thirdPersonCameraDistance }, "Distance", 100, 500)
+    .onChange((value) => {
+      thirdPersonCameraDistance = value;
+    });
+  cameraFolder
+    .add({ Height: thirdPersonCameraHeight }, "Height", 50, 300)
+    .onChange((value) => {
+      thirdPersonCameraHeight = value;
+    });
+  cameraFolder
+    .add({ Smoothness: cameraLerpFactor }, "Smoothness", 0.01, 1)
+    .onChange((value) => {
+      cameraLerpFactor = value;
+    });
+
+  const audioFolder = settingsGui.addFolder("Audio");
+  audioFolder.add({ Music: musicEnabled }, "Music").onChange((value) => {
+    if (value !== musicEnabled) {
+      toggleMusic();
+    }
+  });
+  audioFolder
+    .add({ Volume: musicVolume * 100 }, "Volume", 0, 100, 1)
+    .onChange((value) => {
+      musicVolume = value / 100;
+      if (backgroundMusic) {
+        backgroundMusic.setVolume(musicVolume);
+      }
+      // Also update the slider in the music player
+      document.getElementById("volumeSlider").value = value;
+    });
+  audioFolder.add(
+    {
+      "Current Track": () => {
+        alert(`Now Playing: ${currentTrackInfo}`);
+      },
+    },
+    "Current Track"
+  );
+
+  // Add Next/Previous track controls to the GUI
+  audioFolder.add(
+    {
+      "Next Track": () => {
+        if (!document.getElementById("nextTrack").disabled) {
+          changeTrack("next");
+        }
+      },
+    },
+    "Next Track"
+  );
+
+  audioFolder.add(
+    {
+      "Previous Track": () => {
+        if (!document.getElementById("prevTrack").disabled) {
+          changeTrack("prev");
+        }
+      },
+    },
+    "Previous Track"
+  );
+
+  // Open folders by default
+  carFolder.open();
+  cameraFolder.open();
+  audioFolder.open();
+}
+
+function updateCarMovement() {
+  if (!selectedCar) return;
+
+  // Apply acceleration/deceleration
+  if (carControls.forward) {
+    carSpeed += carAcceleration;
+  } else if (carControls.backward) {
+    carSpeed -= carAcceleration;
+  } else {
+    // Apply natural deceleration when no input
+    if (carSpeed > 0) {
+      carSpeed -= carDeceleration;
+    } else if (carSpeed < 0) {
+      carSpeed += carDeceleration;
+    }
+    // Stop completely at very low speeds
+    if (Math.abs(carSpeed) < 0.1) {
+      carSpeed = 0;
+    }
+  }
+
+  // Apply braking
+  if (carControls.brake) {
+    carSpeed *= 0.9;
+  }
+
+  // Limit speed
+  carSpeed = Math.max(-carMaxSpeed / 2, Math.min(carMaxSpeed, carSpeed));
+
+  // Update speedometer
+  updateSpeedometer();
+
+  // Calculate adaptive turn speed (less responsive at high speeds for realism)
+  const adaptiveTurnSpeed =
+    carTurnSpeed * (1 - (Math.abs(carSpeed) / carMaxSpeed) * 0.5);
+
+  // Apply turning (only when moving)
+  if (Math.abs(carSpeed) > 0.1) {
+    if (carControls.left) {
+      selectedCar.rotation.y += adaptiveTurnSpeed * Math.sign(carSpeed);
+    }
+    if (carControls.right) {
+      selectedCar.rotation.y -= adaptiveTurnSpeed * Math.sign(carSpeed);
+    }
+  }
+
+  // Update direction vector based on car rotation
+  const direction = new THREE.Vector3(0, 0, 1);
+  direction.applyQuaternion(selectedCar.quaternion);
+  direction.y = 0; // Keep on ground
+  direction.normalize();
+  selectedCar.userData.direction.copy(direction);
+
+  // Move car based on direction and speed
+  const moveVector = selectedCar.userData.direction
+    .clone()
+    .multiplyScalar(carSpeed);
+  selectedCar.position.add(moveVector);
+
+  // Keep car at proper height above ground
+  selectedCar.position.y = 5;
+
+  // Wheel rotation animation
+  if (selectedCar.userData.wheels && selectedCar.userData.wheels.length > 0) {
+    selectedCar.userData.wheels.forEach((wheel) => {
+      wheel.rotation.x += carSpeed * 0.01;
+    });
+  }
+}
+
+function updateSpeedometer() {
+  const speedValue = document.querySelector(".speed-value");
+  const displaySpeed = Math.abs(Math.round(carSpeed * 10));
+  speedValue.textContent = displaySpeed;
+
+  // Add visual effect for high speeds
+  if (displaySpeed > 100) {
+    speedValue.classList.add("high-speed");
+  } else {
+    speedValue.classList.remove("high-speed");
+  }
+}
+
+function updateCarFollowCamera(instant = false) {
+  if (!selectedCar) return;
+
+  // Calculate camera position behind car
+  const carDirection = selectedCar.userData.direction.clone();
+
+  // Create offset for camera position
+  const cameraOffset = carDirection
+    .clone()
+    .multiplyScalar(-thirdPersonCameraDistance);
+  cameraOffset.y = thirdPersonCameraHeight;
+
+  const targetPosition = selectedCar.position.clone().add(cameraOffset);
+
+  // Initialize or smoothly transition camera position
+  if (instant || prevCameraTarget.lengthSq() === 0) {
+    camera.position.copy(targetPosition);
+    prevCameraTarget.copy(targetPosition);
+    prevLookAtPoint.copy(selectedCar.position);
+  } else {
+    // Calculate dynamic smoothing factor based on speed
+    const speedFactor = Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
+
+    // Use a more stable lerp factor for high speeds and turning
+    let dynamicLerpFactor;
+    const isTurning = carControls.left || carControls.right;
+    if (isTurning && speedFactor > 0.5) {
+      // More stable when turning at high speeds
+      dynamicLerpFactor = cameraLerpFactor * 0.2;
+    } else {
+      dynamicLerpFactor = THREE.MathUtils.lerp(
+        cameraLerpFactor * 0.8, // More responsive at low speeds
+        cameraLerpFactor * 0.2, // More stable at high speeds
+        speedFactor
+      );
+    }
+
+    // Apply smooth interpolation to camera movement
+    prevCameraTarget.lerp(targetPosition, dynamicLerpFactor);
+    camera.position.copy(prevCameraTarget);
+  }
+
+  // Calculate turn influence for camera with reduced intensity
+  let targetTurnInfluence = 0;
+  if (carControls.left) {
+    targetTurnInfluence = (Math.abs(carSpeed) / carMaxSpeed) * 10; // Reduced from 15
+  } else if (carControls.right) {
+    targetTurnInfluence = (-Math.abs(carSpeed) / carMaxSpeed) * 10; // Reduced from 15
+  }
+
+  // Smooth the turn influence with a more gradual transition
+  currentTurnInfluence = THREE.MathUtils.lerp(
+    currentTurnInfluence,
+    targetTurnInfluence,
+    0.03 // More gentle transition (reduced from 0.05)
+  );
+
+  // Create dynamic look-at target with dampened side movement
+  const lookAtTarget = selectedCar.position
+    .clone()
+    .add(
+      new THREE.Vector3(
+        currentTurnInfluence * 0.8,
+        thirdPersonCameraHeight * 0.2,
+        0
+      )
+    ); // Smooth the look-at transition with a more stable factor
+  if (instant || prevLookAtPoint.lengthSq() === 0) {
+    prevLookAtPoint.copy(lookAtTarget);
+  } else {
+    // Get speed factor again for look-at calculations
+    const speedFactor = Math.min(Math.abs(carSpeed) / carMaxSpeed, 1);
+
+    // Smoother camera when turning at high speeds
+    const isTurning = carControls.left || carControls.right;
+    const lookAtLerpFactor =
+      isTurning && speedFactor > 0.6
+        ? 0.08 // Very stable for high-speed turns
+        : Math.min(cameraLerpFactor * 0.8, 0.12); // More stable overall
+
+    prevLookAtPoint.lerp(lookAtTarget, lookAtLerpFactor);
+  }
+
+  // Point camera at smooth target
+  camera.lookAt(prevLookAtPoint);
+
+  // Apply reduced camera tilt during turns
+  const tiltFactor =
+    Math.abs(carSpeed) > 2
+      ? 0.015 * Math.min(Math.abs(carSpeed) / carMaxSpeed, 1) // Reduced from 0.02
+      : 0;
+  const newTargetRotationZ = -currentTurnInfluence * 0.0008 * tiltFactor; // Reduced from 0.001
+
+  // Extra smooth rotation transition
+  targetCameraRotationZ = THREE.MathUtils.lerp(
+    targetCameraRotationZ,
+    newTargetRotationZ,
+    0.03 // More gentle transition (reduced from 0.05)
+  );
+  camera.rotation.z = THREE.MathUtils.lerp(
+    camera.rotation.z,
+    targetCameraRotationZ,
+    0.02 // More gentle rotation (reduced from 0.03)
+  );
+}
+
+function exitDrivingMode() {
+  // Return to main scene
+  window.location.href = "index.html";
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Update car movement
+  updateCarMovement();
+
+  // Update camera position
+  updateCarFollowCamera();
+
+  // Render scene with post-processing
+  composer.render();
+
+  // Update stats
+  stats.update();
+}
+
+// Start the app
+init();

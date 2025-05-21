@@ -1,0 +1,11 @@
+minimap:
+- include middle point, rotation direction
+
+
+scene:
+- add character movement
+
+
+drive:
+- add car collision with map
+
