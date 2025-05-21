@@ -111,18 +111,9 @@ async function init() {
   camera.updateProjectionMatrix();
   // Create scene
   scene = new THREE.Scene();
-
-  // Create ortho camera for minimap
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  orthoCamera = new THREE.OrthographicCamera(
-    -width,
-    width,
-    height,
-    -height,
-    1,
-    2000
-  );
+  // Create ortho camera for minimap with initially neutral dimensions
+  // We'll set proper dimensions in updateMapCamera function
+  orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2000);
   orthoCamera.position.set(0, 1000, 0);
   orthoCamera.lookAt(0, 0, 0);
   scene.add(orthoCamera);
@@ -754,8 +745,8 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
 
-  // Update orthoCamera for minimap
-  orthoCamera.updateProjectionMatrix();
+  // Update minimap camera with proper dimensions
+  // This will be done in updateMapCamera, no need to manually adjust here
 }
 
 function createSettingsGUI() {
@@ -1091,6 +1082,20 @@ function exitDrivingMode() {
 
 function updateMapCamera() {
   if (!selectedCar) return;
+  // Get the minimap wrapper dimensions to maintain proper aspect ratio
+  const wrapper = document.getElementById("minimapWrapper");
+  const width = wrapper.clientWidth;
+  const height = wrapper.clientHeight;
+
+  // Calculate the aspect ratio and apply a zoom factor
+  const aspectRatio = width / height;
+  const zoom = 2000; // Increased zoom to see more of the map around the car
+
+  // Update orthoCamera with the correct aspect ratio
+  orthoCamera.left = -zoom * aspectRatio;
+  orthoCamera.right = zoom * aspectRatio;
+  orthoCamera.top = zoom;
+  orthoCamera.bottom = -zoom;
 
   // Copy position from the car to minimap camera
   orthoCamera.position.x = selectedCar.position.x;
@@ -1118,13 +1123,14 @@ function renderMap() {
   const width = wrapper.clientWidth;
   const height = wrapper.clientHeight;
 
-  minimapRenderer.setSize(width, height);
-  minimapRenderer.setScissor(0, 0, width, height);
-  minimapRenderer.setViewport(0, 0, width, height);
-  minimapRenderer.setScissorTest(true);
+  // Set size without updating CSS (false parameter)
+  minimapRenderer.setSize(width, height, false);
+
+  // Clear the viewport
   minimapRenderer.clear();
+
+  // Render the scene from the orthographic camera
   minimapRenderer.render(scene, orthoCamera);
-  minimapRenderer.setScissorTest(false);
 }
 
 function animate() {
