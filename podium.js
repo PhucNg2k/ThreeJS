@@ -15,6 +15,7 @@ let carRotationEnabled = true;
 let carRotationSpeed = 0.5;
 let customTexture = null;
 let currentTextureName = 'Default';
+let skyboxTexture = null;
 
 
 
@@ -79,7 +80,9 @@ function init() {
     
     // Create scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xE0E0E0); // Lighter background color (light gray)
+    
+    // Load and apply cubemap as environment
+    loadCubemap();
     
     // Create camera
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -98,44 +101,62 @@ function init() {
     
     // Add lights
     // Ambient light
-    const ambientLight = new THREE.AmbientLight(0x505050, 1.0);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.4); // Giảm cường độ ambient light
     scene.add(ambientLight);
     
-    // Key light
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    keyLight.position.set(50, 100, 30);
-    keyLight.castShadow = true;
-    keyLight.shadow.mapSize.width = 2048;
-    keyLight.shadow.mapSize.height = 2048;
-    keyLight.shadow.camera.near = 1;
-    keyLight.shadow.camera.far = 400;
-    keyLight.shadow.camera.left = -100;
-    keyLight.shadow.camera.right = 100;
-    keyLight.shadow.camera.top = 100;
-    keyLight.shadow.camera.bottom = -100;
-    scene.add(keyLight);
+    // Nguồn sáng chính từ trên trời
+    const skyLight = new THREE.DirectionalLight(0xffffff, 2.2); // Tăng cường độ
+    skyLight.position.set(0, 150, 0); // Đặt trên cao, chính giữa
+    skyLight.target.position.set(0, 0, 0); // Chiếu thẳng xuống sàn
+    skyLight.castShadow = true;
+    skyLight.shadow.mapSize.width = 2048;
+    skyLight.shadow.mapSize.height = 2048;
+    skyLight.shadow.camera.near = 1;
+    skyLight.shadow.camera.far = 400;
+    skyLight.shadow.camera.left = -100;
+    skyLight.shadow.camera.right = 100;
+    skyLight.shadow.camera.top = 100;
+    skyLight.shadow.camera.bottom = -100;
+    scene.add(skyLight);
+    scene.add(skyLight.target);
     
     // Fill light
     const fillLight = new THREE.DirectionalLight(0x8080ff, 0.3);
     fillLight.position.set(-50, 30, -30);
     scene.add(fillLight);
     
-    // Add a reflective floor
-    const floorGeometry = new THREE.PlaneGeometry(300, 300);
-    const floorMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xCCCCCC,
-        roughness: 0.1, 
-        metalness: 0.3,
-        envMapIntensity: 0.8
-    });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.5;
-    floor.receiveShadow = true;
-    scene.add(floor);
-    
     // Handle window resize
     window.addEventListener('resize', onWindowResize);
+}
+
+// Load cubemap texture for environment
+function loadCubemap() {
+    // Load cubemap texture từ SkyBox_Img.png
+    textureLoader.load('./SkyBox/SkyBox_Img.png', function(texture) {
+        // Tạo cubemap bằng cách sử dụng equirectangular mapping
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        texture.encoding = THREE.sRGBEncoding;
+        
+        // Áp dụng làm background và environment
+        scene.background = texture;
+        scene.environment = texture;
+        skyboxTexture = texture;
+        
+        console.log('Cubemap loaded successfully');
+        
+        // Cập nhật tất cả materials trong scene để sử dụng environment map
+        scene.traverse((child) => {
+            if (child.isMesh && child.material) {
+                child.material.envMap = texture;
+                child.material.envMapIntensity = 1.0;
+                child.material.needsUpdate = true;
+            }
+        });
+    }, undefined, function(error) {
+        console.error('Error loading cubemap:', error);
+        // Fallback về màu nền mặc định nếu không load được
+        scene.background = new THREE.Color(0x181A20);
+    });
 }
 
 async function loadPodiumModel() {
@@ -153,6 +174,12 @@ async function loadPodiumModel() {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
+                    // Áp dụng environment map cho car materials
+                    if (child.material && skyboxTexture) {
+                        child.material.envMap = skyboxTexture;
+                        child.material.envMapIntensity = 1.0;
+                        child.material.needsUpdate = true;
+                    }
                 }
             });
         }
@@ -187,6 +214,7 @@ async function loadPodiumModel() {
                             metalnessMap: ormMap,
                             roughness: 0.5,
                             metalness: 0.8,
+                            envMap: skyboxTexture, // Sử dụng environment map
                             envMapIntensity: 1.5,
                             color: 0x444444
                         });
@@ -406,7 +434,9 @@ function applyCustomTexture(imageUrl) {
                     emissive: child.material.emissive,
                     emissiveIntensity: child.material.emissiveIntensity,
                     roughness: 0.7,
-                    metalness: 0.3
+                    metalness: 0.3,
+                    envMap: skyboxTexture, // Sử dụng environment map
+                    envMapIntensity: child.material.envMapIntensity || 1.0
                 });
                 
                 // Cập nhật material cho mesh
@@ -448,6 +478,7 @@ function resetPodiumTextures() {
                 metalnessMap: ormMap,
                 roughness: 0.5,
                 metalness: 0.8,
+                envMap: skyboxTexture, // Sử dụng environment map
                 envMapIntensity: 1.5,
                 color: 0x444444
             });
@@ -584,8 +615,34 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
         }
     });
     
+    // Thêm skybox controls
+    const skyboxFolder = gui.addFolder('Skybox Controls');
+    skyboxFolder.add({ enabled: true }, 'enabled')
+        .name('Enable Skybox')
+        .onChange(value => {
+            if (value && skyboxTexture) {
+                scene.background = skyboxTexture;
+                scene.environment = skyboxTexture;
+            } else {
+                scene.background = new THREE.Color(0x181A20);
+                scene.environment = null;
+            }
+        });
+    
+    // Thêm environment intensity control
+    skyboxFolder.add({ intensity: 1.0 }, 'intensity', 0, 3)
+        .name('Environment Intensity')
+        .onChange(value => {
+            scene.traverse((child) => {
+                if (child.isMesh && child.material && child.material.envMapIntensity !== undefined) {
+                    child.material.envMapIntensity = value;
+                }
+            });
+        });
+    
     // Mở tất cả các folder
     textureFolder.open();
+    skyboxFolder.open();
     carControls.open();
     rotationFolder.open();
     autoRotationFolder.open();
