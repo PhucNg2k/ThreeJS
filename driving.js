@@ -992,10 +992,9 @@ function updateCarMovement() {
       carSpeed = 0;
     }
   }
-
-  // Apply braking
+  // Apply braking - more gradual braking
   if (carControls.brake) {
-    carSpeed *= 0.9;
+    carSpeed *= 0.95; // Changed from 0.9 to 0.95 for slower, more realistic braking
   }
 
   // Limit speed
