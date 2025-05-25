@@ -152,7 +152,9 @@ async function init() {
   console.log("Scene children: ", scene.children)
 
   const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+
   function resetKeys() {
+    characterControls.key = [0,0]
     for (let key in keys) {
       keys[key] = false;
     }
@@ -162,11 +164,14 @@ async function init() {
   // Key controls for walking only (driving controls moved to driving.js)
   const onKeyDown = (event) => {
     // Update keys regardless of lock state
-    if (keys.hasOwnProperty(event.code)) {
-        keys[event.code] = true;
-    }
+   
 
-    if (controlMode === 'orbit' || controls.isLocked) {
+    if (controls.isLocked) {
+
+       if (keys.hasOwnProperty(event.code)) {
+        keys[event.code] = true;
+        }
+
         if (event.code == "KeyH") {
             if (controlMode == "fly") {
             cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
@@ -190,7 +195,7 @@ async function init() {
         const key = characterControls.key;
         switch ( event.code ) {
             case 'ArrowUp': case 'KeyW': case 'KeyZ': key[ 0 ] = - 1; break;
-            // case 'ArrowDown': case 'KeyS': key[ 0 ] = 1; break;
+            case 'ArrowDown': case 'KeyS': key[ 0 ] = 1; break;
             case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[ 1 ] = - 1; break;
             case 'ArrowRight': case 'KeyD': key[ 1 ] = 1; break;
             case 'ShiftLeft' : case 'ShiftRight' : key[ 2 ] = 1; break;
@@ -199,12 +204,12 @@ async function init() {
   }
 
   const onKeyUp = (event) => {
-    if (controls.isLocked) {
-      if (keys.hasOwnProperty(event.code)) {
-        keys[event.code] = false;
-      }
+  
+      if (controls.isLocked) {
+        if (keys.hasOwnProperty(event.code)) {
+          keys[event.code] = false;
+        }
 
-      if (controlMode === 'orbit' || controls.isLocked) {
         const key = characterControls.key;
         switch (event.code) {
           case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = key[0] < 0 ? 0 : key[0]; break;
@@ -214,7 +219,7 @@ async function init() {
           case 'ShiftLeft': case 'ShiftRight': key[2] = 0; break;
         }
       }
-    }
+    
   };
 
   document.addEventListener("keydown", onKeyDown, false);
@@ -535,9 +540,10 @@ UNLOCK EVENT:
     checkIntersection(RayCastObjects);
   });
 
-  // Listen for unlock event
+  
   controls.addEventListener("unlock", () => {
     // Force pointer reset to ensure clean state after unlocking
+    resetKeys();
     pointer.set(0, 0);
 
     // Allow a moment before checking for intersections
@@ -545,7 +551,7 @@ UNLOCK EVENT:
       checkIntersection(RayCastObjects);
     }, 300);
 
-    if (controlMode === 'orbit') {
+    if (controlMode === 'obit') {
       controls.lock();
     }
     
@@ -664,7 +670,7 @@ function loadModel() {
       model = gltf.scene;
       group.add( model );
       
-      // Scale the model 1000 times bigger
+      // Scale the model 100 times bigger
       model.scale.set(100, 100, 100);
       
       model.rotation.y = PI;
@@ -691,9 +697,9 @@ function loadModel() {
       } );
 
       skeleton = new THREE.SkeletonHelper( model );
-      skeleton.visible = true;
+      skeleton.visible = false;
       skeleton.layers.set(1);
-      scene.add( skeleton );
+      //scene.add( skeleton );
 
       const animations = gltf.animations;
 
@@ -788,10 +794,9 @@ function loadModel() {
       camera.position.add(ease);
 
       group.position.copy(position);
-      group.quaternion.rotateTowards(rotate, characterControls.rotateSpeed);
+      group.quaternion.slerp(rotate, characterControls.rotateSpeed);
 
-
-
+    
 
       //chaOrbitControls.target.copy(position).add({ x: 0, y: 1, z: 0 });
       followGroup.position.copy(position);
@@ -819,12 +824,7 @@ function loadModel() {
   function unwrapRad( r ) { return Math.atan2( Math.sin( r ), Math.cos( r ) );}
 
 //---------------------
-  function updateCamera() {
-    if (controlMode === 'fly') {
-      updateControlMove(keys);
-      updateCameraPoint();
-    }
-  }
+  
 
   function enterCarDriving(car) {
     // Instead of setting up driving in this page, redirect to the dedicated driving page
@@ -890,7 +890,10 @@ function loadModel() {
 
     cancelButton.addEventListener("click", () => {
       console.log("Action cancelled");
-      carOptionPanel.style.display = "none";
+      const guiPanel = document.getElementById("objectInfoPanel");
+      const carOptionPanel = document.getElementById("carOptionPanel");
+      clearGuiPanel(guiPanel);
+      clearCarOptionPanel(carOptionPanel);
       controls.lock(); // Resume controls
     });
 
@@ -1058,6 +1061,12 @@ function loadModel() {
   }
 
   function getCameraLookingAt(pointer, distance = 150, usePointer = false) {
+    if (controlMode == 'orbit') {
+      if (model) {
+
+      }
+    }
+
     if (usePointer && !controls.isLocked) {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(pointer, camera);
@@ -1086,6 +1095,7 @@ function loadModel() {
     const sphereGeometry = new THREE.SphereGeometry(size, size, size);
     const sphereMaterial = new THREE.MeshBasicMaterial({ color: color });
     const mesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    mesh.layers.set(1);
     return mesh;
   }
 
@@ -1134,7 +1144,7 @@ function loadModel() {
 
 
   function updateCameraPoint() {
-    if (controlMode === 'fly' && camPoint) {
+    if (camPoint) {
       const point = getCameraLookingAt(pointer, 150, false);
       camPoint.position.copy(point);
     }
@@ -1267,6 +1277,13 @@ function loadModel() {
 
 
   function switchControlMode() {
+
+    if (camPoint) {
+      scene.remove(camPoint);
+      camPoint = null;
+    }
+
+
     if (controlMode === 'orbit') {
         // Save camera state before switching to fly mode
         savedCameraState = {
@@ -1282,7 +1299,6 @@ function loadModel() {
         chaOrbitControls.removeEventListener('change', onControlsChange);
         
         // Create new camPoint based on saved direction
-        if (camPoint) scene.remove(camPoint);
         camPoint = getSphereSimple();
         camPoint.name = "CamPoint";
         scene.add(camPoint);
@@ -1295,19 +1311,19 @@ function loadModel() {
         controlMode = 'orbit';
         chaOrbitControls.enabled = true;
         chaOrbitControls.addEventListener('change', onControlsChange);
-        
-        // Remove camPoint in orbit mode
-        if (camPoint) {
-            scene.remove(camPoint);
-            camPoint = null;
-        }
-        
+
+        camPoint = getSphereSimple();
+        camPoint.name = "CamPoint";
+        scene.add(camPoint);
+
         // Force camera to face model
         updateOrbitTarget();
         savedCameraState = null; // Clear saved state when switching to orbit
         
         console.log("Switched to Third-Person Orbit Camera");
     }
+
+       
   }
 
   // Add this function to handle control changes
@@ -1348,8 +1364,10 @@ function loadModel() {
 
       // Position camera behind and above the model
       const distance = 300; 
-      const height = 250; 
+      
       const forwardOffset = 500; 
+      const xOffset = 30;
+      const yOffset = 300; 
 
       // Get model's forward direction (model faces Z initially due to rotation.y = Math.PI)
       const modelForward = new THREE.Vector3(0, 0, 1); // Corrected to -Z
@@ -1358,7 +1376,7 @@ function loadModel() {
       // Calculate desired camera position (behind and above the model)
       const desiredPosition = modelPosition.clone()
         .sub(modelForward.multiplyScalar(distance))
-        .add(new THREE.Vector3(0, height, 0));
+        .add(new THREE.Vector3(xOffset, yOffset, 0));
 
       // Smoothly interpolate camera position
       camera.position.lerp(desiredPosition, 0.1);
@@ -1375,9 +1393,13 @@ function loadModel() {
         new THREE.Vector3(0, 0, -1), // Camera's default forward (-Z)
         cameraForward
       );
-      camera.quaternion.slerp(cameraQuaternion, 0.1); // Smoothly rotate camera
-
+      camera.quaternion.rotateTowards(cameraQuaternion, 0); // Smoothly rotate camera
+      
       chaOrbitControls.update();
+      if (camPoint) {
+          updateCameraPoint();
+      }
+      
     }
   }
 
