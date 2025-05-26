@@ -2,7 +2,7 @@ import * as THREE from "three";
 import Stats from "three/addons/libs/stats.module.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -10,7 +10,7 @@ import { OutlinePass } from "three/addons/postprocessing/OutlinePass.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import GUI from "lil-gui";
-
+import { RAD2DEG } from "three/src/math/MathUtils";
 
 RectAreaLightUniformsLib.init();
 const clock = new THREE.Clock();
@@ -25,7 +25,7 @@ let savedCameraState = null;
 let scene, camera, orthoCamera, minimapRenderer, chaOrbitControls, controls;
 let group, followGroup, skeleton, mixer, actions;
 let model = null;
-let cameraFlyMode = 'fly';
+let cameraFlyMode = "fly";
 let outlineMode = false;
 let isModelLoaded = false;
 let dirCam = new THREE.Vector3();
@@ -34,29 +34,30 @@ let camPoint = null;
 // Car array for tracking cars in the scene
 let cars = [];
 
+let collide_flag = false;
 
 const PI = Math.PI;
 const PI90 = Math.PI / 2;
 
 const characterControls = {
-  key: [ 0, 0 ],
+  key: [0, 0],
   ease: new THREE.Vector3(),
   position: new THREE.Vector3(),
-  up: new THREE.Vector3( 0, 1, 0 ),
+  up: new THREE.Vector3(0, 1, 0),
   rotate: new THREE.Quaternion(),
-  current: 'Idle',
+  current: "Idle",
   fadeDuration: 0.5,
   runVelocity: 800,
   walkVelocity: 500,
-  rotateSpeed: 0.3,
+  rotateSpeed: 0.1,
   floorDecale: 0,
-
 };
 
-
 async function init() {
-
-  minimapRenderer = new THREE.WebGLRenderer({ alpha: true, canvas: document.getElementById("minimapCanvas") });
+  minimapRenderer = new THREE.WebGLRenderer({
+    alpha: true,
+    canvas: document.getElementById("minimapCanvas"),
+  });
   minimapRenderer.setPixelRatio(window.devicePixelRatio);
   minimapRenderer.setClearColor(0x000000, 0); // transparent background
 
@@ -65,7 +66,7 @@ async function init() {
   const stats = new Stats();
   document.getElementById("webgl").appendChild(stats.dom);
   document.getElementById("webgl").appendChild(renderer.domElement);
-  
+
   camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
@@ -75,9 +76,9 @@ async function init() {
   camera.updateProjectionMatrix();
   camera.layers.enable(0); // Default layer
   camera.layers.enable(1); // Include helpers
-  
+
   renderer.setPixelRatio(window.devicePixelRatio);
-  
+
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x4287f5);
 
@@ -85,7 +86,7 @@ async function init() {
   axesHelper.layers.set(1);
   scene.add(axesHelper);
 
-  if (controlMode === 'fly') {
+  if (controlMode === "fly") {
     camPoint = getSphereSimple();
     camPoint.name = "CamPoint";
     scene.add(camPoint);
@@ -93,25 +94,25 @@ async function init() {
   }
 
   group = new THREE.Group();
-  group.name = "CharacterGroup"
-  scene.add( group );
+  group.name = "CharacterGroup";
+  scene.add(group);
 
   followGroup = new THREE.Group();
-  followGroup.name = "FollowGroup"
-  scene.add( followGroup );
+  followGroup.name = "FollowGroup";
+  scene.add(followGroup);
 
-  const dirLight = new THREE.DirectionalLight( 0xffffff, 5 );
-  dirLight.position.set( - 2, 5, - 3 );
+  const dirLight = new THREE.DirectionalLight(0xffffff, 5);
+  dirLight.position.set(-2, 5, -3);
   dirLight.castShadow = true;
   const cam = dirLight.shadow.camera;
   cam.top = cam.right = 2;
-  cam.bottom = cam.left = - 2;
+  cam.bottom = cam.left = -2;
   cam.near = 3;
   cam.far = 8;
-  dirLight.shadow.bias = - 0.005;
+  dirLight.shadow.bias = -0.005;
   dirLight.shadow.radius = 4;
-  followGroup.add( dirLight );
-  followGroup.add( dirLight.target );
+  followGroup.add(dirLight);
+  followGroup.add(dirLight.target);
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
   scene.add(ambientLight);
@@ -128,10 +129,17 @@ async function init() {
 
   let width = window.innerWidth;
   let height = window.innerHeight;
-  orthoCamera = new THREE.OrthographicCamera(-width, width, height, -height, 1, 2000);
+  orthoCamera = new THREE.OrthographicCamera(
+    -width,
+    width,
+    height,
+    -height,
+    1,
+    2000
+  );
   orthoCamera.position.set(0, 1000, 0);
   orthoCamera.lookAt(0, 0, 0);
-  orthoCamera.layers.enable(0);  // Default objects
+  orthoCamera.layers.enable(0); // Default objects
   orthoCamera.layers.disable(1); // Hide helpers
 
   scene.add(orthoCamera);
@@ -145,81 +153,108 @@ async function init() {
     10000
   );
 
-
   // LOAD CHARACTER MODEL
   loadModel();
 
-  console.log("Scene children: ", scene.children)
+  console.log("Scene children: ", scene.children);
 
   const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
 
   function resetKeys() {
-    characterControls.key = [0,0]
+    characterControls.key = [0, 0];
     for (let key in keys) {
       keys[key] = false;
     }
   }
 
-  
   // Key controls for walking only (driving controls moved to driving.js)
   const onKeyDown = (event) => {
     // Update keys regardless of lock state
-   
 
     if (controls.isLocked) {
-
-       if (keys.hasOwnProperty(event.code)) {
+      if (keys.hasOwnProperty(event.code)) {
         keys[event.code] = true;
-        }
+      }
 
-        if (event.code == "KeyH") {
-            if (controlMode == "fly") {
-            cameraFlyMode = (cameraFlyMode === 'fly') ? 'strict' : 'fly';     
-            }
-        }
-        if (event.code === "KeyC") {
-            switchControlMode();
-            return;
-        }
-        if (event.code === "KeyP") {
-            if (controlMode == "fly") {
-              controls.unlock(); 
-            } else {
-
-            }
-
-            startPanel.style.display = "block";
-            return;
-        }
-        
-        const key = characterControls.key;
-        switch ( event.code ) {
-            case 'ArrowUp': case 'KeyW': case 'KeyZ': key[ 0 ] = - 1; break;
-            case 'ArrowDown': case 'KeyS': key[ 0 ] = 1; break;
-            case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[ 1 ] = - 1; break;
-            case 'ArrowRight': case 'KeyD': key[ 1 ] = 1; break;
-            case 'ShiftLeft' : case 'ShiftRight' : key[ 2 ] = 1; break;
-        }
-    }
-  }
-
-  const onKeyUp = (event) => {
-  
-      if (controls.isLocked) {
-        if (keys.hasOwnProperty(event.code)) {
-          keys[event.code] = false;
-        }
-
-        const key = characterControls.key;
-        switch (event.code) {
-          case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = key[0] < 0 ? 0 : key[0]; break;
-          case 'ArrowDown': case 'KeyS': key[0] = key[0] > 0 ? 0 : key[0]; break;
-          case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = key[1] < 0 ? 0 : key[1]; break;
-          case 'ArrowRight': case 'KeyD': key[1] = key[1] > 0 ? 0 : key[1]; break;
-          case 'ShiftLeft': case 'ShiftRight': key[2] = 0; break;
+      if (event.code == "KeyH") {
+        if (controlMode == "fly") {
+          cameraFlyMode = cameraFlyMode === "fly" ? "strict" : "fly";
         }
       }
-    
+      if (event.code === "KeyC") {
+        switchControlMode();
+        return;
+      }
+      if (event.code === "KeyP") {
+        if (controlMode == "fly") {
+          controls.unlock();
+        } else {
+        }
+
+        startPanel.style.display = "block";
+        return;
+      }
+
+      const key = characterControls.key;
+      switch (event.code) {
+        case "ArrowUp":
+        case "KeyW":
+        case "KeyZ":
+          key[0] = -1;
+          break;
+        case "ArrowDown":
+        case "KeyS":
+          key[0] = 1;
+          break;
+        case "ArrowLeft":
+        case "KeyA":
+        case "KeyQ":
+          key[1] = -1;
+          break;
+        case "ArrowRight":
+        case "KeyD":
+          key[1] = 1;
+          break;
+        case "ShiftLeft":
+        case "ShiftRight":
+          key[2] = 1;
+          break;
+      }
+    }
+  };
+
+  const onKeyUp = (event) => {
+    if (controls.isLocked) {
+      if (keys.hasOwnProperty(event.code)) {
+        keys[event.code] = false;
+      }
+
+      const key = characterControls.key;
+      switch (event.code) {
+        case "ArrowUp":
+        case "KeyW":
+        case "KeyZ":
+          key[0] = key[0] < 0 ? 0 : key[0];
+          break;
+        case "ArrowDown":
+        case "KeyS":
+          key[0] = key[0] > 0 ? 0 : key[0];
+          break;
+        case "ArrowLeft":
+        case "KeyA":
+        case "KeyQ":
+          key[1] = key[1] < 0 ? 0 : key[1];
+          break;
+        case "ArrowRight":
+        case "KeyD":
+          key[1] = key[1] > 0 ? 0 : key[1];
+          break;
+        case "ShiftLeft":
+        case "ShiftRight":
+          key[2] = 0;
+          break;
+      }
+    }
   };
 
   document.addEventListener("keydown", onKeyDown, false);
@@ -227,21 +262,25 @@ async function init() {
 
   const startPanel = document.getElementById("startPanel");
   const startButton = document.getElementById("startButton");
-  startButton.addEventListener("click", () => {
-    startPanel.style.display = "none";
-    if (controlMode === 'orbit') {
+  startButton.addEventListener(
+    "click",
+    () => {
+      startPanel.style.display = "none";
+      if (controlMode === "orbit") {
         // In orbit mode, update target before locking
         updateTarget();
-    } else { 
+      } else {
         if (savedCameraState) {
           // In free mode, restore saved camera state if exists
           camera.position.copy(savedCameraState.position);
           camera.quaternion.copy(savedCameraState.quaternion);
         }
-    }
+      }
 
-    controls.lock();
-  }, false);
+      controls.lock();
+    },
+    false
+  );
 
   /*
   LOCK EVENT:
@@ -267,19 +306,17 @@ UNLOCK EVENT:
     carOptionPanel.style.display = "none";
 
     // If in free mode and we have a saved state, restore it
-    if (controlMode === 'fly' && savedCameraState) {
-        camera.position.copy(savedCameraState.position);
-        camera.quaternion.copy(savedCameraState.quaternion);
-        // Recreate camPoint
-        if (camPoint) scene.remove(camPoint);
-        camPoint = getSphereSimple();
-        camPoint.name = "CamPoint";
-        scene.add(camPoint);
-        updateCameraPoint();
+    if (controlMode === "fly" && savedCameraState) {
+      camera.position.copy(savedCameraState.position);
+      camera.quaternion.copy(savedCameraState.quaternion);
+      // Recreate camPoint
+      if (camPoint) scene.remove(camPoint);
+      camPoint = getSphereSimple();
+      camPoint.name = "CamPoint";
+      scene.add(camPoint);
+      updateCameraPoint();
     } else {
-
     }
-
   });
 
   controls.addEventListener("unlock", (event) => {
@@ -287,24 +324,21 @@ UNLOCK EVENT:
     resetKeys();
 
     // Save camera state when unlocking in free mode
-    if (controlMode === 'fly') {
-        savedCameraState = {
-            position: camera.position.clone(),
-            quaternion: camera.quaternion.clone(),
-            direction: new THREE.Vector3()
-        };
-        camera.getWorldDirection(savedCameraState.direction);
+    if (controlMode === "fly") {
+      savedCameraState = {
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+        direction: new THREE.Vector3(),
+      };
+      camera.getWorldDirection(savedCameraState.direction);
     } else {
-
     }
-
   });
 
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   // Load cars and add them to our cars array for tracking
-  
 
   // Load Aspark Owl car model
   const asparkCar = await loadGLTFModel(
@@ -361,8 +395,6 @@ UNLOCK EVENT:
   bugattiCar.rotation.y = Math.PI;
   ferrariCar.rotation.y = Math.PI;
 
-
-
   asparkCar.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = true;
@@ -384,8 +416,6 @@ UNLOCK EVENT:
     }
   });
 
-
-  
   scene.add(asparkCar); // Add the Aspark car to the scene
   scene.add(bugattiCar); // Add the Bugatti car to the scene
   scene.add(ferrariCar); // Add the Ferrari car to the scene
@@ -430,7 +460,7 @@ UNLOCK EVENT:
   scene.add(directionalLight);
   const helper = new THREE.DirectionalLightHelper(directionalLight, 5);
   //scene.add(helper);
-  
+
   // Create a much larger ground plane for infinite-like appearance
   const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
   const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
@@ -476,15 +506,19 @@ UNLOCK EVENT:
 
   let isMouseClicked = false;
   window.addEventListener("mousedown", (event) => {
-    console.log("MOUSE DOWN EVENT")
+    console.log("MOUSE DOWN EVENT");
     const guiPanel = document.getElementById("objectInfoPanel");
     const carOptionPanel = document.getElementById("carOptionPanel");
-     const clickedInsideGUI = (guiPanel && guiPanel.contains(event.target)) || (carOptionPanel && carOptionPanel.contains(event.target));
+    const clickedInsideGUI =
+      (guiPanel && guiPanel.contains(event.target)) ||
+      (carOptionPanel && carOptionPanel.contains(event.target));
     if (clickedInsideGUI) {
-        console.log("Click inside GUI or car option panel, ignoring control lock");
-        return;
+      console.log(
+        "Click inside GUI or car option panel, ignoring control lock"
+      );
+      return;
     }
-    
+
     if (!controls.isLocked) {
       setTimeout(() => {
         controls.lock();
@@ -507,7 +541,11 @@ UNLOCK EVENT:
     } else {
       clearGuiPanel(guiPanel);
       // Only clear carOptionPanel if no car is selected
-      if (!cars.includes(retrieveObjectWithUUID(RayCastMapping[INTERSECTED?.uuid]))) {
+      if (
+        !cars.includes(
+          retrieveObjectWithUUID(RayCastMapping[INTERSECTED?.uuid])
+        )
+      ) {
         clearCarOptionPanel(carOptionPanel);
       }
       removeOutline();
@@ -535,12 +573,12 @@ UNLOCK EVENT:
 
   window.addEventListener("resize", windowResize);
   window.addEventListener("pointermove", onPointerMove);
+
   controls.addEventListener("change", () => {
     // Always check intersections since driving is now in a separate page
     checkIntersection(RayCastObjects);
   });
 
-  
   controls.addEventListener("unlock", () => {
     // Force pointer reset to ensure clean state after unlocking
     resetKeys();
@@ -551,14 +589,12 @@ UNLOCK EVENT:
       checkIntersection(RayCastObjects);
     }, 300);
 
-    if (controlMode === 'obit') {
+    if (controlMode === "obit") {
       controls.lock();
     }
-    
   });
 
   let dirCam = new THREE.Vector3();
- 
 
   camera.getWorldDirection(dirCam);
   trackCameraPoint(camPoint);
@@ -572,15 +608,12 @@ UNLOCK EVENT:
     let rayCastMapping = {};
 
     for (let child of scene.children) {
-      
       if (child.isGroup) {
-        
-        console.log("CHILD:", child)
-
+        console.log("CHILD:", child);
 
         if (checkMultiMeshesGroup(child)) {
           const mergedMesh = mergeGroupIntoSingleMesh(child);
-          
+
           if (mergedMesh) {
             console.log("Merged mesh: ", mergedMesh);
             mergedMesh.name = child.name + "_merged_collider";
@@ -592,11 +625,11 @@ UNLOCK EVENT:
             continue;
           }
         }
-        
+
         if (!child.name.includes("Group")) {
           let colliderBox = getSimplifyCollider(child);
           if (colliderBox) {
-            console.log("Child name: ", child.name)
+            console.log("Child name: ", child.name);
             colliderBox.name = child.name + "_collider";
             colliderBox.applyMatrix4(child.matrixWorld.clone().invert());
             raycastObjects.push(colliderBox);
@@ -627,6 +660,49 @@ UNLOCK EVENT:
       }
     }
     return false;
+  }
+
+  function createBbox(object) {
+    let bbox = new THREE.Box3();
+    bbox.setFromObject(object);
+    return bbox;
+  }
+
+  function checkCollision(objList, pivot) {
+    const offset = -5;
+
+    // Get current pivot world position
+    const pivotPos = new THREE.Vector3();
+    pivot.getWorldPosition(pivotPos);
+
+    // Get forward vector from pivot's rotation
+    const pivotForward = new THREE.Vector3(0, 0, -1); // -Z is forward in Three.js
+    pivotForward.applyQuaternion(pivot.quaternion);
+
+    // Calculate future position
+    const desiredPosition = pivotPos
+      .clone()
+      .add(pivotForward.multiplyScalar(offset));
+
+    // Clone the pivot and move it to the desired position
+    const pivotClone = pivot.clone();
+    pivotClone.position.copy(desiredPosition);
+
+    // Predictive bounding box at the future position
+    const predictedBbox = createBbox(pivotClone);
+
+    // Check for collision with objects
+    for (let object of objList) {
+      const bbox = createBbox(object);
+      if (predictedBbox.intersectsBox(bbox)) {
+        console.log("COLLISION DETECTED");
+        //console.log("DESIRED POINT: ", desiredPosition);
+        //console.log("Model Pos: ", group.position)
+        return true; // Collided
+      }
+    }
+
+    return false; // No collision
   }
 
   function checkIntersection(objList) {
@@ -661,93 +737,100 @@ UNLOCK EVENT:
     }
   }
 
-//--------------------
+  //--------------------
 
-function loadModel() {
+  function loadModel() {
     const loader = new GLTFLoader();
-    loader.load( 'models/gltf/Soldier.glb', function ( gltf ) {
+    loader.load(
+      "models/gltf/Soldier.glb",
+      function (gltf) {
+        model = gltf.scene;
+        group.add(model);
 
-      model = gltf.scene;
-      group.add( model );
-      
-      // Scale the model 100 times bigger
-      model.scale.set(100, 100, 100);
-      
-      model.rotation.y = PI;
-      group.rotation.y = PI;
+        // Scale the model 100 times bigger
+        model.scale.set(100, 100, 100);
 
-      model.traverse( function ( object ) {
-        if ( object.isMesh ) {
-          if ( object.name == 'vanguard_Mesh' ) {
-            object.castShadow = true;
-            object.receiveShadow = true;
-            object.material.shadowSide = THREE.DoubleSide;
-            object.material.metalness = 1.0;
-            object.material.roughness = 0.2;
-            object.material.color.set( 1, 1, 1 );
-            object.material.metalnessMap = object.material.map;
+        model.rotation.y = PI;
+        group.rotation.y = PI;
+
+        model.traverse(function (object) {
+          if (object.isMesh) {
+            if (object.name == "vanguard_Mesh") {
+              object.castShadow = true;
+              object.receiveShadow = true;
+              object.material.shadowSide = THREE.DoubleSide;
+              object.material.metalness = 1.0;
+              object.material.roughness = 0.2;
+              object.material.color.set(1, 1, 1);
+              object.material.metalnessMap = object.material.map;
+            } else {
+              object.material.metalness = 1;
+              object.material.roughness = 0;
+              object.material.transparent = true;
+              object.material.opacity = 0.8;
+              object.material.color.set(1, 1, 1);
+            }
+          }
+        });
+
+        skeleton = new THREE.SkeletonHelper(model);
+        skeleton.visible = false;
+        skeleton.layers.set(1);
+        //scene.add( skeleton );
+
+        const animations = gltf.animations;
+
+        mixer = new THREE.AnimationMixer(model);
+        if (!animations || animations.length === 0) {
+          console.error("No animations found in Soldier.glb");
+          return;
+        }
+
+        actions = {};
+
+        const animationMap = {
+          Idle: animations.find((anim) =>
+            anim.name.toLowerCase().includes("idle")
+          ),
+          Walk: animations.find((anim) =>
+            anim.name.toLowerCase().includes("walk")
+          ),
+          Run: animations.find((anim) =>
+            anim.name.toLowerCase().includes("run")
+          ),
+        };
+        for (const key in animationMap) {
+          if (animationMap[key]) {
+            actions[key] = mixer.clipAction(animationMap[key]);
+            actions[key].enabled = true;
+            actions[key].setEffectiveTimeScale(1);
+            if (key !== "Idle") actions[key].setEffectiveWeight(0);
           } else {
-            object.material.metalness = 1;
-            object.material.roughness = 0;
-            object.material.transparent = true;
-            object.material.opacity = 0.8;
-            object.material.color.set( 1, 1, 1 );
+            console.error(`Animation for ${key} not found in Soldier.glb`);
           }
         }
-      } );
 
-      skeleton = new THREE.SkeletonHelper( model );
-      skeleton.visible = false;
-      skeleton.layers.set(1);
-      //scene.add( skeleton );
-
-      const animations = gltf.animations;
-
-      mixer = new THREE.AnimationMixer(model);
-      if (!animations || animations.length === 0) {
-        console.error('No animations found in Soldier.glb');
-        return;
-      }
-
-      actions = {};
-
-      const animationMap = {
-        Idle: animations.find(anim => anim.name.toLowerCase().includes('idle')),
-        Walk: animations.find(anim => anim.name.toLowerCase().includes('walk')),
-        Run: animations.find(anim => anim.name.toLowerCase().includes('run')),
-      };
-      for (const key in animationMap) {
-        if (animationMap[key]) {
-          actions[key] = mixer.clipAction(animationMap[key]);
-          actions[key].enabled = true;
-          actions[key].setEffectiveTimeScale(1);
-          if (key !== 'Idle') actions[key].setEffectiveWeight(0);
+        if (actions.Idle) {
+          actions.Idle.play();
         } else {
-          console.error(`Animation for ${key} not found in Soldier.glb`);
+          console.error("Idle animation not found, cannot start animation");
         }
+
+        isModelLoaded = true;
+        console.log("Model loaded:", model);
+        console.log("Actions:", actions);
+
+        if (controlMode === "orbit") {
+          updateOrbitTarget(); // Ensure camera is positioned correctly after model loads
+        }
+      },
+      undefined,
+      function (error) {
+        console.error("Failed to load Soldier.glb:", error);
+        isModelLoaded = false;
       }
-
-      if (actions.Idle) {
-        actions.Idle.play();
-      } else {
-        console.error('Idle animation not found, cannot start animation');
-      }
-
-      isModelLoaded = true;
-      console.log('Model loaded:', model);
-      console.log('Actions:', actions);
-
-      if (controlMode === 'orbit') {
-        updateOrbitTarget(); // Ensure camera is positioned correctly after model loads
-      }
-
-    },
-    undefined,
-    function (error) {
-      console.error('Failed to load Soldier.glb:', error);
-      isModelLoaded = false;
-    } );
-}
+    );
+  }
 
   function updateCharacterAnimation(play) {
     if (characterControls.current !== play) {
@@ -756,7 +839,11 @@ function loadModel() {
 
       if (previous && toPlay) {
         previous.fadeOut(characterControls.fadeDuration);
-        toPlay.reset().setEffectiveWeight(1).fadeIn(characterControls.fadeDuration).play();
+        toPlay
+          .reset()
+          .setEffectiveWeight(1)
+          .fadeIn(characterControls.fadeDuration)
+          .play();
       } else if (toPlay) {
         toPlay.reset().setEffectiveWeight(1).play();
       }
@@ -765,7 +852,28 @@ function loadModel() {
     }
   }
 
-  function updateCharacter( delta ) {
+  let lastValidPosition = new THREE.Vector3();
+  let isColliding = false;
+
+  function onControlsChange() {
+    if (controlMode === "orbit") {
+      const currentPos = group.position.clone();
+
+      if (checkCollision(RayCastObjects, group)) {
+        if (!isColliding) { // first collision
+          lastValidPosition.copy(currentPos); // only update for the first collision
+          isColliding = true;
+        }
+        group.position.copy(lastValidPosition);
+        group.updateMatrixWorld();
+      } else {
+        lastValidPosition.copy(currentPos);
+        isColliding = false;
+      }
+    }
+  }
+
+  function updateCharacter(delta) {
     if (!isModelLoaded) return;
     const fade = characterControls.fadeDuration;
     const key = characterControls.key;
@@ -776,42 +884,32 @@ function loadModel() {
     const azimuth = chaOrbitControls.getAzimuthalAngle();
 
     const active = key[0] !== 0 || key[1] !== 0;
-    const play = active ? (key[2] ? 'Run' : 'Walk') : 'Idle';
+    const play = active ? (key[2] ? "Run" : "Walk") : "Idle";
 
+    // Always update animation regardless of collision
     updateCharacterAnimation(play);
 
-    // change animation
-
-    if (characterControls.current !== 'Idle') {
-      const velocity = characterControls.current === 'Run' ? characterControls.runVelocity : characterControls.walkVelocity;
+    if (characterControls.current !== "Idle") {
+      const velocity =
+        characterControls.current === "Run"
+          ? characterControls.runVelocity
+          : characterControls.walkVelocity;
       ease.set(key[1], 0, key[0]).multiplyScalar(velocity * delta);
-      const angle = unwrapRad(Math.atan2(ease.x, ease.z) + azimuth); // move model towar the camera rotate direction (xz: azimuth) 
-      
+
+      const angle = unwrapRad(Math.atan2(ease.x, ease.z) + azimuth);
       rotate.setFromAxisAngle(up, angle);
       characterControls.ease.applyAxisAngle(up, azimuth);
 
-      position.add(ease);
-      camera.position.add(ease);
+      // Only update position if not colliding
+      if (!isColliding) {
+        position.add(ease);
+        camera.position.add(ease);
+        group.position.copy(position);
+        followGroup.position.copy(position);
+      }
 
-      group.position.copy(position);
+      // Always update rotation regardless of collision
       group.quaternion.slerp(rotate, characterControls.rotateSpeed);
-
-    
-
-      //chaOrbitControls.target.copy(position).add({ x: 0, y: 1, z: 0 });
-      followGroup.position.copy(position);
-      group.position.copy(position);
-
-
-      /* INIFINITY PLANE
-      const dx = position.x - plane.position.x;
-      const dz = position.z - plane.position.z;
-      if (Math.abs(dx) > characterControls.floorDecale) plane.position.x += dx;
-      if (Math.abs(dz) > characterControls.floorDecale) plane.position.z += dz;
-      */
-
-      console.log("Plane pos: ", plane.position);
-      console.log("Character pos: ", group.position);
     }
 
     if (mixer && delta) {
@@ -821,10 +919,11 @@ function loadModel() {
     chaOrbitControls.update();
   }
 
-  function unwrapRad( r ) { return Math.atan2( Math.sin( r ), Math.cos( r ) );}
+  function unwrapRad(r) {
+    return Math.atan2(Math.sin(r), Math.cos(r));
+  }
 
-//---------------------
-  
+  //---------------------
 
   function enterCarDriving(car) {
     // Instead of setting up driving in this page, redirect to the dedicated driving page
@@ -840,7 +939,7 @@ function loadModel() {
     } else {
       console.error("Car not found in cars array:", car.name);
     }
-  } 
+  }
 
   function getCarModelPath(carName) {
     // Map car names to their model paths and display names
@@ -884,7 +983,13 @@ function loadModel() {
     let driveButton = document.getElementById("driveCarButton");
     let cancelButton = document.getElementById("cancelButton");
 
-    if (!carOptionPanel || !carOptionTitle || !viewButton || !driveButton || !cancelButton) {
+    if (
+      !carOptionPanel ||
+      !carOptionTitle ||
+      !viewButton ||
+      !driveButton ||
+      !cancelButton
+    ) {
       console.error("Car option panel elements not found");
       return;
     }
@@ -942,9 +1047,9 @@ function loadModel() {
     carOptionPanel.offsetHeight; // Trigger reflow
     carOptionPanel.style.display = "block";
     console.log("Car option panel displayed for:", targetObject.name);
-    console.log("Panel: ", carOptionPanel)
+    console.log("Panel: ", carOptionPanel);
   }
- 
+
   function handleInteraction(mesh, isMouseClicked) {
     if (isMouseClicked) {
       controls.unlock();
@@ -955,8 +1060,8 @@ function loadModel() {
       const original_uuid = RayCastMapping[collider_uuid];
       const targetObject = retrieveObjectWithUUID(original_uuid);
 
-      console.log("Clicked obj: ", mesh, "UUID: ", collider_uuid)
-      console.log("Og object: ", targetObject, "UUID: ",original_uuid)
+      console.log("Clicked obj: ", mesh, "UUID: ", collider_uuid);
+      console.log("Og object: ", targetObject, "UUID: ", original_uuid);
 
       if (targetObject) {
         console.log("TARGET OBJECT: ", targetObject); // Check if it's one of our cars
@@ -1027,19 +1132,19 @@ function loadModel() {
   }
 
   function getSimplifyCollider(mesh) {
-      const box = new THREE.Box3().setFromObject(mesh);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-  
-      const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
-      const collider = new THREE.Mesh(
-        boxGeo,
-        new THREE.MeshBasicMaterial({ visible: false })
-      );
-      collider.position.copy(center);
-      return collider;
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const collider = new THREE.Mesh(
+      boxGeo,
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    collider.position.copy(center);
+    return collider;
   }
 
   function retrieveObjectWithUUID(uuid) {
@@ -1089,7 +1194,6 @@ function loadModel() {
     outlinePass.selectedObjects = [];
   }
 
-  
   function onPointerMove(event) {
     if (isMouseClicked) return; // debounce pointer
     if (controls.isLocked) {
@@ -1101,28 +1205,27 @@ function loadModel() {
   }
 
   function getCameraLookingAt(pointer, distance = 150, usePointer = false) {
-    if (controlMode == 'orbit') {
+    if (controlMode == "orbit") {
       if (model) {
-
       }
     }
 
     if (usePointer && !controls.isLocked) {
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(pointer, camera);
-        const direction = raycaster.ray.direction.clone().normalize();
-        const pointLookingAt = camera.position
-            .clone()
-            .add(direction.multiplyScalar(distance));
-        return pointLookingAt;
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(pointer, camera);
+      const direction = raycaster.ray.direction.clone().normalize();
+      const pointLookingAt = camera.position
+        .clone()
+        .add(direction.multiplyScalar(distance));
+      return pointLookingAt;
     } else {
-        const direction = new THREE.Vector3();
-        camera.getWorldDirection(direction);
-        direction.normalize();
-        const pointLookingAt = camera.position
-            .clone()
-            .add(direction.multiplyScalar(distance));
-        return pointLookingAt;
+      const direction = new THREE.Vector3();
+      camera.getWorldDirection(direction);
+      direction.normalize();
+      const pointLookingAt = camera.position
+        .clone()
+        .add(direction.multiplyScalar(distance));
+      return pointLookingAt;
     }
   }
 
@@ -1162,7 +1265,7 @@ function loadModel() {
     }
 
     const movement = new THREE.Vector3();
-    
+
     if (keys.KeyW) movement.add(forward);
     if (keys.KeyS) movement.addScaledVector(forward, -1);
     if (keys.KeyA) movement.add(right);
@@ -1170,18 +1273,14 @@ function loadModel() {
 
     // Only apply movement if there is any
     if (movement.length() > 0) {
-       movement.normalize().multiplyScalar(moveSpeed);
+      movement.normalize().multiplyScalar(moveSpeed);
       camera.position.add(movement);
     }
-
-    
 
     if (cameraFlyMode === "strict") {
       camera.position.y = carHeight - 50;
     }
   }
-
-
 
   function updateCameraPoint() {
     if (camPoint) {
@@ -1190,19 +1289,19 @@ function loadModel() {
     }
   }
 
+  collide_flag = false;
+
   function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
-
-    if (
-      controlMode === 'orbit') {
-        updateCharacter(delta);
-        updateOrbitTarget();
-    } else if (controlMode === 'fly' && controls.isLocked) {
-        updateControlMove(keys);
-        if (camPoint) updateCameraPoint();
+    if (controlMode === "orbit") {
+      updateCharacter(delta);
+      updateOrbitTarget();
+    } else if (controlMode === "fly" && controls.isLocked) {
+      updateControlMove(keys);
+      if (camPoint) updateCameraPoint();
     }
-    
+
     updateMapCamera(group);
     render();
     renderMap();
@@ -1214,7 +1313,7 @@ function loadModel() {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
-    orthoCamera.updateProjectionMatrix() 
+    orthoCamera.updateProjectionMatrix();
     render();
   }
 
@@ -1312,82 +1411,69 @@ function loadModel() {
     minimapRenderer.clear();
     minimapRenderer.render(scene, orthoCamera);
     minimapRenderer.setScissorTest(false);
-    }
-  
-
+  }
 
   function switchControlMode() {
-
     if (camPoint) {
       scene.remove(camPoint);
       camPoint = null;
     }
 
+    if (controlMode === "orbit") {
+      // Save camera state before switching to fly mode
+      savedCameraState = {
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+        direction: new THREE.Vector3(),
+      };
+      camera.getWorldDirection(savedCameraState.direction);
 
-    if (controlMode === 'orbit') {
-        // Save camera state before switching to fly mode
-        savedCameraState = {
-            position: camera.position.clone(),
-            quaternion: camera.quaternion.clone(),
-            direction: new THREE.Vector3()
-        };
-        camera.getWorldDirection(savedCameraState.direction);
+      // Switch to fly mode
+      controlMode = "fly";
+      chaOrbitControls.enabled = false;
+      chaOrbitControls.removeEventListener("change", onControlsChange);
 
-        // Switch to fly mode
-        controlMode = 'fly';
-        chaOrbitControls.enabled = false;
-        chaOrbitControls.removeEventListener('change', onControlsChange);
-        
-        // Create new camPoint based on saved direction
-        camPoint = getSphereSimple();
-        camPoint.name = "CamPoint";
-        scene.add(camPoint);
-        updateCameraPoint();
-        
-        controls.lock();
-        console.log("Switched to Free-Fly Camera");
+      // Create new camPoint based on saved direction
+      camPoint = getSphereSimple();
+      camPoint.name = "CamPoint";
+      scene.add(camPoint);
+      updateCameraPoint();
+
+      controls.lock();
+      console.log("Switched to Free-Fly Camera");
     } else {
-        // Switch back to orbit mode
-        controlMode = 'orbit';
-        chaOrbitControls.enabled = true;
-        chaOrbitControls.addEventListener('change', onControlsChange);
+      // Switch back to orbit mode
+      controlMode = "orbit";
+      chaOrbitControls.enabled = true;
+      chaOrbitControls.addEventListener("change", onControlsChange);
 
-        camPoint = getSphereSimple();
-        camPoint.name = "CamPoint";
-        scene.add(camPoint);
+      camPoint = getSphereSimple();
+      camPoint.name = "CamPoint";
+      scene.add(camPoint);
 
-        // Force camera to face model
-        updateOrbitTarget();
-        savedCameraState = null; // Clear saved state when switching to orbit
-        
-        console.log("Switched to Third-Person Orbit Camera");
-    }
+      // Force camera to face model
+      updateOrbitTarget();
+      savedCameraState = null; // Clear saved state when switching to orbit
 
-       
-  }
-
-  // Add this function to handle control changes
-  function onControlsChange() {
-    if (controlMode === 'orbit') {
-      checkIntersection(RayCastObjects);
+      console.log("Switched to Third-Person Orbit Camera");
     }
   }
 
   // Update the controls setup in init()
   function setupControls(renderer) {
     controls = new PointerLockControls(camera, renderer.domElement);
-    
+
     chaOrbitControls = new OrbitControls(camera, renderer.domElement);
     chaOrbitControls.enableDamping = true;
     chaOrbitControls.enablePan = false;
     chaOrbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
-    chaOrbitControls.addEventListener('change', onControlsChange);
-    
+    chaOrbitControls.addEventListener("change", onControlsChange);
+
     // Set initial orbit position
     //updateOrbitTarget();
-    
+
     // Initially disable the controls based on mode
-    if (controlMode === 'fly') {
+    if (controlMode === "fly") {
       chaOrbitControls.enabled = false;
     } else {
       chaOrbitControls.enabled = true;
@@ -1403,18 +1489,19 @@ function loadModel() {
       model.getWorldPosition(modelPosition);
 
       // Position camera behind and above the model
-      const distance = 300; 
-      
-      const forwardOffset = 500; 
+      const distance = 300;
+
+      const forwardOffset = 500;
       const xOffset = 30;
-      const yOffset = 300; 
+      const yOffset = 300;
 
       // Get model's forward direction (model faces Z initially due to rotation.y = Math.PI)
       const modelForward = new THREE.Vector3(0, 0, 1); // Corrected to -Z
       modelForward.applyQuaternion(group.quaternion); // Use group's quaternion for character rotation
 
       // Calculate desired camera position (behind and above the model)
-      const desiredPosition = modelPosition.clone()
+      const desiredPosition = modelPosition
+        .clone()
         .sub(modelForward.multiplyScalar(distance))
         .add(new THREE.Vector3(xOffset, yOffset, 0));
 
@@ -1422,7 +1509,8 @@ function loadModel() {
       camera.position.lerp(desiredPosition, 0.1);
 
       // Set OrbitControls target to model's position with slight offset
-      const targetPosition = modelPosition.clone()
+      const targetPosition = modelPosition
+        .clone()
         .add(modelForward.normalize().multiplyScalar(forwardOffset))
         .add(new THREE.Vector3(0, 50, 0)); // Look slightly above character
       chaOrbitControls.target.lerp(targetPosition, 0.1);
@@ -1434,16 +1522,13 @@ function loadModel() {
         cameraForward
       );
       camera.quaternion.rotateTowards(cameraQuaternion, 0); // Smoothly rotate camera
-      
+
       chaOrbitControls.update();
       if (camPoint) {
-          updateCameraPoint();
+        updateCameraPoint();
       }
-      
     }
   }
-
-
 }
 
 init();
