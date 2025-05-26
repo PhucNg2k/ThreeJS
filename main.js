@@ -842,6 +842,36 @@ function loadModel() {
     }
   } 
 
+  function getCarModelPath(carName) {
+    // Map car names to their model paths and display names
+    if (carName.includes("AsparkOwl")) {
+      return {
+        path: "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf",
+        displayName: "Aspark Owl",
+      };
+    } else if (carName.includes("BugattiBolide")) {
+      return {
+        path: "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf",
+        displayName: "Bugatti Bolide",
+      };
+    } else if (carName.includes("FerrariMonzaSP1")) {
+      return {
+        path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
+        displayName: "Ferrari Monza SP1",
+      };
+    } else if (carName.includes("MclarenDraco")) {
+      return {
+        path: "mclaren/draco/chassis.gltf",
+        displayName: "McLaren",
+      };
+    } else {
+      // Default fallback path for unknown cars
+      return {
+        path: "Car/Car.fbx",
+        displayName: "Default Car",
+      };
+    }
+  }
 
   function optionGateway(targetObject) {
     if (!cars.includes(targetObject)) return;
@@ -878,7 +908,17 @@ function loadModel() {
     // Add event listeners
     viewButton.addEventListener("click", () => {
       console.log(`Viewing ${targetObject.name} on podium`);
-      window.location.replace('podium.html');
+      // Get car info including path and simplified name for podium.js
+      const carInfo = getCarModelPath(targetObject.name);
+
+      const selectedCar = {
+        name: carInfo.displayName, // Use the displayName that podium.js expects
+        path: carInfo.path,
+        originalName: targetObject.name, // Keep original name for reference
+      };
+      localStorage.setItem("selectedCar", JSON.stringify(selectedCar));
+
+      window.location.replace("podium.html");
       carOptionPanel.style.display = "none";
     });
 
