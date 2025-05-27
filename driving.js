@@ -537,6 +537,11 @@ async function loadCars() {
         name: "Ferrari Monza SP1",
         scale: [14000, 14000, 14000],
       },
+      {
+        path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
+        name: "Varis F82",
+        scale: [14000, 14000, 14000],
+      },
     ]; // Define map options
     const mapOptions = [
       {

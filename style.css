@@ -68,3 +68,46 @@ font-size: 32px;
 #carOptionPanel button:hover {
   background: #3267d6;
 }
+
+/* Controls Panel Styles */
+#controlsPanel {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    padding: 15px;
+    z-index: 100;
+    pointer-events: auto;
+    display: none; /* Initially hidden, show when needed */
+}
+
+.controls-title {
+    margin-bottom: 10px;
+    font-weight: bold;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 5px;
+    font-size: 16px;
+}
+
+.control-row {
+    display: grid;
+    grid-template-columns: 60px auto;
+    margin-bottom: 5px;
+    align-items: center;
+}
+
+.control-row span:first-child {
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.control-row span:last-child {
+    font-size: 14px;
+    padding-left: 10px;
+}

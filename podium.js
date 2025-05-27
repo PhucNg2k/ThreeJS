@@ -81,7 +81,7 @@ function init() {
 
   // Create scene
   scene = new THREE.Scene();
-  
+
   // Load and apply cubemap as environment
   loadCubemap();
 
@@ -136,31 +136,36 @@ function init() {
 // Load cubemap texture for environment
 function loadCubemap() {
   // Load cubemap texture từ SkyBox_Img.png
-  textureLoader.load('./SkyBox/SkyBox_Img.png', function(texture) {
-    // Tạo cubemap bằng cách sử dụng equirectangular mapping
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    texture.encoding = THREE.sRGBEncoding;
-    
-    // Áp dụng làm background và environment
-    scene.background = texture;
-    scene.environment = texture;
-    skyboxTexture = texture;
-    
-    console.log('Cubemap loaded successfully');
-    
-    // Cập nhật tất cả materials trong scene để sử dụng environment map
-    scene.traverse((child) => {
-      if (child.isMesh && child.material) {
-        child.material.envMap = texture;
-        child.material.envMapIntensity = 1.0;
-        child.material.needsUpdate = true;
-      }
-    });
-  }, undefined, function(error) {
-    console.error('Error loading cubemap:', error);
-    // Fallback về màu nền mặc định nếu không load được
-    scene.background = new THREE.Color(0xe0e0e0);
-  });
+  textureLoader.load(
+    "./SkyBox/SkyBox_Img.png",
+    function (texture) {
+      // Tạo cubemap bằng cách sử dụng equirectangular mapping
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      texture.encoding = THREE.sRGBEncoding;
+
+      // Áp dụng làm background và environment
+      scene.background = texture;
+      scene.environment = texture;
+      skyboxTexture = texture;
+
+      console.log("Cubemap loaded successfully");
+
+      // Cập nhật tất cả materials trong scene để sử dụng environment map
+      scene.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.envMap = texture;
+          child.material.envMapIntensity = 1.0;
+          child.material.needsUpdate = true;
+        }
+      });
+    },
+    undefined,
+    function (error) {
+      console.error("Error loading cubemap:", error);
+      // Fallback về màu nền mặc định nếu không load được
+      scene.background = new THREE.Color(0xe0e0e0);
+    }
+  );
 }
 
 async function loadPodiumModel() {
@@ -361,6 +366,8 @@ async function loadPodiumModel() {
               car.scale.set(8, 8, 8);
             } else if (car.name.includes("Bugatti")) {
               car.scale.set(8, 8, 8);
+            } else if (car.name.includes("Varis")) {
+              car.scale.set(800, 800, 800);
             } else {
               car.scale.set(7, 7, 7); // Default scale for other GLTF models
             }
@@ -565,7 +572,7 @@ function applyCustomTexture(imageUrl) {
           roughness: 0.7,
           metalness: 0.3,
           envMap: skyboxTexture, // Sử dụng environment map
-          envMapIntensity: child.material.envMapIntensity || 1.0
+          envMapIntensity: child.material.envMapIntensity || 1.0,
         });
 
         // Cập nhật material cho mesh
@@ -769,12 +776,13 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
         resetPodiumTextures();
       }
     });
-    
+
   // Thêm skybox controls
-  const skyboxFolder = gui.addFolder('Skybox Controls');
-  skyboxFolder.add({ enabled: true }, 'enabled')
-    .name('Enable Skybox')
-    .onChange(value => {
+  const skyboxFolder = gui.addFolder("Skybox Controls");
+  skyboxFolder
+    .add({ enabled: true }, "enabled")
+    .name("Enable Skybox")
+    .onChange((value) => {
       if (value && skyboxTexture) {
         scene.background = skyboxTexture;
         scene.environment = skyboxTexture;
@@ -783,13 +791,18 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
         scene.environment = null;
       }
     });
-  
+
   // Thêm environment intensity control
-  skyboxFolder.add({ intensity: 1.0 }, 'intensity', 0, 3)
-    .name('Environment Intensity')
-    .onChange(value => {
+  skyboxFolder
+    .add({ intensity: 1.0 }, "intensity", 0, 3)
+    .name("Environment Intensity")
+    .onChange((value) => {
       scene.traverse((child) => {
-        if (child.isMesh && child.material && child.material.envMapIntensity !== undefined) {
+        if (
+          child.isMesh &&
+          child.material &&
+          child.material.envMapIntensity !== undefined
+        ) {
           child.material.envMapIntensity = value;
         }
       });
