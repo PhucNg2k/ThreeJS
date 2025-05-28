@@ -28,6 +28,8 @@ let outlineMode = false;
 let isModelLoaded = false;
 let camPoint = null;
 
+let debugBbox = true;
+
 // Car array for tracking cars in the scene
 let cars = [];
 
@@ -163,6 +165,13 @@ async function init() {
         keys[event.code] = true;
       }
 
+      if (event.code == "KeyB") {
+        
+        debugBbox = debugBbox === true ? false : true;
+        console.log("KeyB pressed")
+        console.log("Debug: ", debugBbox)
+      }
+
       if (event.code == "KeyH") {
         if (controlMode == "fly") {
           cameraFlyMode = cameraFlyMode === "fly" ? "strict" : "fly";
@@ -220,6 +229,10 @@ async function init() {
     if (controls.isLocked) {
       if (keys.hasOwnProperty(event.code)) {
         keys[event.code] = false;
+      }
+
+      if (event.code == "KeyB") {
+        debugBbox = debugBbox === true ? true : false;
       }
 
       const key = characterControls.key;
@@ -289,17 +302,16 @@ async function init() {
 
     // If in free mode and we have a saved state, restore it
     if (controlMode === "fly" && savedCameraState) {
-      camera.position.copy(savedCameraState.position);
-      camera.quaternion.copy(savedCameraState.quaternion);
       // Recreate camPoint
       if (camPoint) scene.remove(camPoint);
       camPoint = getSphereSimple();
       camPoint.name = "CamPoint";
       scene.add(camPoint);
       updateCameraPoint();
-    } else {
-    }
+    } 
   });
+
+
   controls.addEventListener("unlock", (event) => {
     console.log("(UNLOCK) EVENT");
     resetKeys();
@@ -311,15 +323,11 @@ async function init() {
     }
 
     // Save camera state when unlocking in free mode
-    if (controlMode === "fly") {
-      savedCameraState = {
-        position: camera.position.clone(),
-        quaternion: camera.quaternion.clone(),
-        direction: new THREE.Vector3(),
-      };
-      camera.getWorldDirection(savedCameraState.direction);
-    } else {
-    }
+    if (controlMode === "fly" && savedCameraState) {
+      camera.position.copy(savedCameraState.position);
+      camera.quaternion.copy(savedCameraState.quaternion);
+      renderer.render(scene, camera);
+    } 
   });
 
   renderer.shadowMap.enabled = true;
@@ -554,6 +562,12 @@ async function init() {
   let isMouseClicked = false;
   window.addEventListener("mousedown", (event) => {
     console.log("MOUSE DOWN EVENT");
+
+    savedCameraState = {
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+    };
+
     const guiPanel = document.getElementById("objectInfoPanel");
     const carOptionPanel = document.getElementById("carOptionPanel");
     const clickedInsideGUI =
@@ -684,10 +698,13 @@ async function init() {
               rayCastMapping[colliderBox.uuid] = child.uuid;
               child.add(colliderBox);
               child.userData.collider = colliderBox;
-              const boxHelper = new THREE.BoxHelper(colliderBox, 0xffff00);
-              boxHelper.visible = false; // Hide the yellow bounding boxes
-              colliderBox.userData.helper = boxHelper;
-              //   scene.add(boxHelper);
+
+              if (debugBbox) {
+                const boxHelper = new THREE.BoxHelper(colliderBox, 0xffff00);
+                boxHelper.visible = true; // Hide the yellow bounding boxes
+                colliderBox.userData.helper = boxHelper;
+                scene.add(boxHelper);
+              }
             }
           }
         }
@@ -1360,8 +1377,9 @@ async function init() {
 
   function render() {
     stats.update();
-    // UpdateBoxHelper(RayCastObjects);
-
+    if (debugBbox) {
+      UpdateBoxHelper(RayCastObjects);
+    }
     // Use the composer for rendering when outlining is needed
     if (outlineMode && outlinePass.selectedObjects.length > 0) {
       composer.render();

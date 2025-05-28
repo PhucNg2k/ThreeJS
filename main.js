@@ -10,7 +10,6 @@ import { OutlinePass } from "three/addons/postprocessing/OutlinePass.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import GUI from "lil-gui";
-import { RAD2DEG } from "three/src/math/MathUtils";
 
 RectAreaLightUniformsLib.init();
 const clock = new THREE.Clock();
@@ -19,7 +18,6 @@ let INTERSECTED = null;
 let composer, outlinePass;
 
 let controlMode = "fly";
-let orbitTarget = new THREE.Vector3(0, 1, 0);
 let savedCameraState = null;
 
 let scene, camera, orthoCamera, minimapRenderer, chaOrbitControls, controls;
@@ -28,16 +26,14 @@ let model = null;
 let cameraFlyMode = "fly";
 let outlineMode = false;
 let isModelLoaded = false;
-let dirCam = new THREE.Vector3();
 let camPoint = null;
+
+let debugBbox = true;
 
 // Car array for tracking cars in the scene
 let cars = [];
 
-let collide_flag = false;
-
 const PI = Math.PI;
-const PI90 = Math.PI / 2;
 
 const characterControls = {
   key: [0, 0],
@@ -146,13 +142,6 @@ async function init() {
 
   setupControls(renderer);
 
-  const fakecamera = new THREE.PerspectiveCamera(
-    75,
-    window.innerWidth / window.innerHeight,
-    1.0,
-    10000
-  );
-
   // LOAD CHARACTER MODEL
   loadModel();
 
@@ -176,6 +165,13 @@ async function init() {
         keys[event.code] = true;
       }
 
+      if (event.code == "KeyB") {
+        
+        debugBbox = debugBbox === true ? false : true;
+        console.log("KeyB pressed")
+        console.log("Debug: ", debugBbox)
+      }
+
       if (event.code == "KeyH") {
         if (controlMode == "fly") {
           cameraFlyMode = cameraFlyMode === "fly" ? "strict" : "fly";
@@ -189,6 +185,12 @@ async function init() {
         if (controlMode == "fly") {
           controls.unlock();
         } else {
+        }
+
+        // Hide controls panel when showing start panel
+        let controlsPanel = document.getElementById("controlsPanel");
+        if (controlsPanel) {
+          controlsPanel.style.display = "none";
         }
 
         startPanel.style.display = "block";
@@ -227,6 +229,10 @@ async function init() {
     if (controls.isLocked) {
       if (keys.hasOwnProperty(event.code)) {
         keys[event.code] = false;
+      }
+
+      if (event.code == "KeyB") {
+        debugBbox = debugBbox === true ? true : false;
       }
 
       const key = characterControls.key;
@@ -281,23 +287,6 @@ async function init() {
     },
     false
   );
-
-  /*
-  LOCK EVENT:
--> MOUSE UP 
-
--> MOUSE DOWN -> REGISTER CAMERA
--> OBJECT
--> UNLOCK EVENT  -> RESUME CAMERA
-
-
-UNLOCK EVENT:
--> MOUSE UP 
-(WILL NOT REGISTER MOUSE DOWN EVENT)
--> LOCK EVENT  
-
-  */
-
   controls.addEventListener("lock", (event) => {
     console.log("(LOCK) EVENT");
     startPanel.style.display = "none";
@@ -305,125 +294,195 @@ UNLOCK EVENT:
     let carOptionPanel = document.getElementById("carOptionPanel");
     carOptionPanel.style.display = "none";
 
+    // Show controls panel when controls are active
+    let controlsPanel = document.getElementById("controlsPanel");
+    if (controlsPanel) {
+      controlsPanel.style.display = "block";
+    }
+
     // If in free mode and we have a saved state, restore it
     if (controlMode === "fly" && savedCameraState) {
-      camera.position.copy(savedCameraState.position);
-      camera.quaternion.copy(savedCameraState.quaternion);
       // Recreate camPoint
       if (camPoint) scene.remove(camPoint);
       camPoint = getSphereSimple();
       camPoint.name = "CamPoint";
       scene.add(camPoint);
       updateCameraPoint();
-    } else {
-    }
+    } 
   });
+
 
   controls.addEventListener("unlock", (event) => {
     console.log("(UNLOCK) EVENT");
     resetKeys();
 
-    // Save camera state when unlocking in free mode
-    if (controlMode === "fly") {
-      savedCameraState = {
-        position: camera.position.clone(),
-        quaternion: camera.quaternion.clone(),
-        direction: new THREE.Vector3(),
-      };
-      camera.getWorldDirection(savedCameraState.direction);
-    } else {
+    // Hide controls panel when controls are inactive
+    let controlsPanel = document.getElementById("controlsPanel");
+    if (controlsPanel) {
+      controlsPanel.style.display = "none";
     }
+
+    // Save camera state when unlocking in free mode
+    if (controlMode === "fly" && savedCameraState) {
+      camera.position.copy(savedCameraState.position);
+      camera.quaternion.copy(savedCameraState.quaternion);
+      renderer.render(scene, camera);
+    } 
   });
 
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Function to create and setup a car
+  async function createCar(
+    modelPath,
+    name,
+    scale = [150, 150, 150],
+    positionOffset = 0,
+    rotation = Math.PI / 4
+  ) {
+    const car = await loadGLTFModel(modelPath);
+    car.name = name + "Car";
 
-  // Load cars and add them to our cars array for tracking
+    // Setup physics properties
+    car.userData.velocity = new THREE.Vector3();
+    car.userData.acceleration = new THREE.Vector3();
+    car.userData.direction = new THREE.Vector3(0, 0, 1);
+    car.userData.wheels = [];
 
-  // Load Aspark Owl car model
-  const asparkCar = await loadGLTFModel(
-    "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf"
-  );
-  asparkCar.name = "AsparkOwl";
+    // Apply scale
+    car.scale.set(scale[0], scale[1], scale[2]);
 
-  const bugattiCar = await loadGLTFModel(
-    "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf"
-  );
-  bugattiCar.name = "BugattiBolide";
+    // Set rotation to face forward
+    car.rotation.y = rotation;
 
-  const ferrariCar = await loadGLTFModel(
-    "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf"
-  );
-  ferrariCar.name = "FerrariMonzaSP1";
+    // Setup shadows
+    car.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = false;
+      }
+    });
 
-  // Setup Aspark Owl physics properties
-  asparkCar.userData.velocity = new THREE.Vector3();
-  asparkCar.userData.acceleration = new THREE.Vector3();
-  asparkCar.userData.direction = new THREE.Vector3(0, 0, 1);
-  // Add wheels property to Aspark car (even if it's empty - this prevents errors)
-  asparkCar.userData.wheels = [];
+    // Position car based on offset
+    car.position.set(...positionOffset);
 
-  bugattiCar.userData.velocity = new THREE.Vector3();
-  bugattiCar.userData.acceleration = new THREE.Vector3();
-  bugattiCar.userData.direction = new THREE.Vector3(0, 0, 1);
-  // Add wheels property to Bugatti car
-  bugattiCar.userData.wheels = [];
+    // Add to scene and cars array
+    scene.add(car);
+    cars.push(car);
 
-  ferrariCar.userData.velocity = new THREE.Vector3();
-  ferrariCar.userData.acceleration = new THREE.Vector3();
-  ferrariCar.userData.direction = new THREE.Vector3(0, 0, 1);
-  // Add wheels property to Ferrari car
-  ferrariCar.userData.wheels = [];
+    return car;
+  }
 
-  // Scale the Aspark model to match the size of the other cars
-  asparkCar.scale.set(150, 150, 150);
-  bugattiCar.scale.set(150, 150, 150);
-  ferrariCar.scale.set(14000, 14000, 14000);
+  // Car configuration array for easy management
+  const carConfigs = [
+    {
+      path: "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf",
+      name: "AsparkOwl",
+      scale: [150, 150, 150],
+      positionOffset: [1000, 5, 1000],
+      rotation: Math.PI / 4 - Math.PI / 2,
+    },
+    {
+      path: "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf",
+      name: "BugattiBolide",
+      scale: [150, 150, 150],
+      positionOffset: [755, 5, 2000],
+      rotation: Math.PI / 4 - Math.PI / 2,
+    },
+    {
+      path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
+      name: "FerrariMonzaSP1",
+      scale: [14000, 14000, 14000],
+      positionOffset: [-755, 5, 2000],
+      rotation: Math.PI / 4,
+    },
+    {
+      path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
+      name: "VarisF82M4GTS",
+      scale: [11000, 11000, 11000],
+      positionOffset: [-1000, 5, 1000],
+      rotation: Math.PI / 4,
+    },
+  ];
 
-  // Get car size after scaling
+  // Load all cars using the configuration
+  const loadedCars = {};
+  for (const config of carConfigs) {
+    const car = await createCar(
+      config.path,
+      config.name,
+      config.scale,
+      config.positionOffset,
+      config.rotation
+    );
+    loadedCars[config.name] = car;
+  }
+  // Access individual cars if needed
+  const asparkCar = loadedCars.AsparkOwl;
+  const bugattiCar = loadedCars.BugattiBolide;
+  const ferrariCar = loadedCars.FerrariMonzaSP1;
+
+  // Load the showroom environment
+  async function loadShowroom() {
+    try {
+      console.log("Loading showroom model...");
+      const showroom = await loadGLTFModel("mclaren/car-showroom_1/scene.gltf");
+
+      // Position and scale the showroom
+      showroom.position.set(0, 0, 0); // Center the showroom
+      showroom.scale.set(250, 250, 250); // Adjust scale as needed
+
+      // Setup shadows for the showroom
+      showroom.traverse((child) => {
+        if (child.isMesh) {
+          child.receiveShadow = true;
+          child.castShadow = false; // Showroom shouldn't cast shadows on itself
+
+          // Enhance material properties for better lighting
+          if (child.material) {
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      // Add the showroom to the scene
+      scene.add(showroom);
+      console.log("Showroom loaded successfully!");
+
+      return showroom;
+    } catch (error) {
+      console.error("Failed to load showroom:", error);
+      return null;
+    }
+  }
+  // Load the showroom
+  const showroom = await loadShowroom();
+
+  // Add enhanced lighting for the showroom environment
+  if (showroom) {
+    // Add ambient light specifically for the showroom interior
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6); // Soft ambient light
+    scene.add(ambientLight);
+
+    // Add interior showroom lighting
+    const interiorLight1 = new THREE.PointLight(0xffffff, 1.5, 800);
+    interiorLight1.position.set(200, 400, 200);
+    interiorLight1.castShadow = true;
+    scene.add(interiorLight1);
+
+    const interiorLight2 = new THREE.PointLight(0xffffff, 1.5, 800);
+    interiorLight2.position.set(-200, 400, 200);
+    interiorLight2.castShadow = true;
+    scene.add(interiorLight2);
+
+    const interiorLight3 = new THREE.PointLight(0xffffff, 1.5, 800);
+    interiorLight3.position.set(0, 400, -200);
+    interiorLight3.castShadow = true;
+    scene.add(interiorLight3);
+  }
+
+  // Get car size for camera positioning
   let carSize = new THREE.Box3().setFromObject(asparkCar);
-  let carWidth = carSize.max.x - carSize.min.x;
   let carHeight = carSize.max.y - carSize.min.y;
-
-  // Position cars
-  asparkCar.position.set(carWidth + 500, 0, 0);
-  bugattiCar.position.set(-(carWidth + 500), 0, 0);
-  ferrariCar.position.set(-(carWidth + 1000), 0, 0);
-
-  // Rotate cars to face forward (adjust as needed for the McLaren model)
-  asparkCar.rotation.y = Math.PI; // Adjust as needed for the Aspark model
-  bugattiCar.rotation.y = Math.PI;
-  ferrariCar.rotation.y = Math.PI;
-
-  asparkCar.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = false;
-    }
-  });
-
-  bugattiCar.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = false;
-    }
-  });
-
-  ferrariCar.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = false;
-    }
-  });
-
-  scene.add(asparkCar); // Add the Aspark car to the scene
-  scene.add(bugattiCar); // Add the Bugatti car to the scene
-  scene.add(ferrariCar); // Add the Ferrari car to the scene
-
-  // Add cars to array for tracking and selection
-  cars.push(asparkCar); // Add the Aspark car to the cars array
-  cars.push(bugattiCar); // Add the Bugatti car to the cars array
-  cars.push(ferrariCar); // Add the Ferrari car to the cars array
 
   // Add a spotlight for general illumination
   const spotLight = new THREE.SpotLight(0xffff00, 10000);
@@ -460,9 +519,9 @@ UNLOCK EVENT:
   scene.add(directionalLight);
   const helper = new THREE.DirectionalLightHelper(directionalLight, 5);
   //scene.add(helper);
-
-  // Create a much larger ground plane for infinite-like appearance
-  const planeGeometry = new THREE.PlaneGeometry(50000, 50000);
+  // Create a much larger ground plane for infinite-like appearance (but smaller if showroom is present)
+  const planeSize = showroom ? 20000 : 50000; // Smaller ground if showroom is loaded
+  const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
   const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
   planeMaterial.receiveShadow = true;
   const plane = new THREE.Mesh(planeGeometry, planeMaterial);
@@ -472,15 +531,11 @@ UNLOCK EVENT:
 
   // Set texture to repeat many times for a tiled effect
   groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
-  groundTexture.repeat.set(100, 100); // Significantly increase repeat
+  groundTexture.repeat.set(showroom ? 50 : 100, showroom ? 50 : 100); // Adjust repeat based on showroom presence
   groundTexture.anisotropy = 16; // Better texture quality at angles
   groundTexture.needsUpdate = true;
 
   scene.add(plane);
-  // Raise car slightly above ground level
-  asparkCar.position.y = 5; // Raise Aspark car slightly above ground level
-  bugattiCar.position.y = 5; // Raise Bugatti car slightly above ground level
-  ferrariCar.position.y = 5; // Raise Ferrari car slightly above ground level
 
   camera.position.x = 300;
   camera.position.y = carHeight - 50;
@@ -507,6 +562,12 @@ UNLOCK EVENT:
   let isMouseClicked = false;
   window.addEventListener("mousedown", (event) => {
     console.log("MOUSE DOWN EVENT");
+
+    savedCameraState = {
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+    };
+
     const guiPanel = document.getElementById("objectInfoPanel");
     const carOptionPanel = document.getElementById("carOptionPanel");
     const clickedInsideGUI =
@@ -608,43 +669,43 @@ UNLOCK EVENT:
     let rayCastMapping = {};
 
     for (let child of scene.children) {
-      if (child.isGroup) {
-        console.log("CHILD:", child);
+      if (child.name.includes("Car")) {
+        if (child.isGroup) {
+          console.log("CHILD:", child);
 
-        if (checkMultiMeshesGroup(child)) {
-          const mergedMesh = mergeGroupIntoSingleMesh(child);
+          if (checkMultiMeshesGroup(child)) {
+            const mergedMesh = mergeGroupIntoSingleMesh(child);
 
-          if (mergedMesh) {
-            console.log("Merged mesh: ", mergedMesh);
-            mergedMesh.name = child.name + "_merged_collider";
-            mergedMesh.applyMatrix4(child.matrixWorld.clone().invert());
-            child.add(mergedMesh);
-            raycastObjects.push(mergedMesh);
-            rayCastMapping[mergedMesh.uuid] = child.uuid;
-            console.log("MergedMesh: ", mergedMesh);
-            continue;
+            if (mergedMesh) {
+              console.log("Merged mesh: ", mergedMesh);
+              mergedMesh.name = child.name + "_merged_collider";
+              mergedMesh.applyMatrix4(child.matrixWorld.clone().invert());
+              child.add(mergedMesh);
+              raycastObjects.push(mergedMesh);
+              rayCastMapping[mergedMesh.uuid] = child.uuid;
+              console.log("MergedMesh: ", mergedMesh);
+              continue;
+            }
           }
-        }
 
-        if (!child.name.includes("Group")) {
-          let colliderBox = getSimplifyCollider(child);
-          if (colliderBox) {
-            console.log("Child name: ", child.name);
-            colliderBox.name = child.name + "_collider";
-            colliderBox.applyMatrix4(child.matrixWorld.clone().invert());
-            raycastObjects.push(colliderBox);
-            rayCastMapping[colliderBox.uuid] = child.uuid;
-            child.add(colliderBox);
+          if (!child.name.includes("Group")) {
+            let colliderBox = getSimplifyCollider(child);
+            if (colliderBox) {
+              console.log("Child name: ", child.name);
+              colliderBox.name = child.name + "_collider";
+              colliderBox.applyMatrix4(child.matrixWorld.clone().invert());
+              raycastObjects.push(colliderBox);
+              rayCastMapping[colliderBox.uuid] = child.uuid;
+              child.add(colliderBox);
+              child.userData.collider = colliderBox;
 
-            // Store reference to collider in the original object userData
-            // This helps with proper car selection later
-            child.userData.collider = colliderBox;
-
-            // Create box helper but don't show it (set visible to false)
-            const boxHelper = new THREE.BoxHelper(colliderBox, 0xffff00);
-            boxHelper.visible = false; // Hide the yellow bounding boxes
-            colliderBox.userData.helper = boxHelper;
-            //scene.add(boxHelper);
+              if (debugBbox) {
+                const boxHelper = new THREE.BoxHelper(colliderBox, 0xffff00);
+                boxHelper.visible = true; // Hide the yellow bounding boxes
+                colliderBox.userData.helper = boxHelper;
+                scene.add(boxHelper);
+              }
+            }
           }
         }
       }
@@ -696,8 +757,6 @@ UNLOCK EVENT:
       const bbox = createBbox(object);
       if (predictedBbox.intersectsBox(bbox)) {
         console.log("COLLISION DETECTED");
-        //console.log("DESIRED POINT: ", desiredPosition);
-        //console.log("Model Pos: ", group.position)
         return true; // Collided
       }
     }
@@ -860,12 +919,14 @@ UNLOCK EVENT:
       const currentPos = group.position.clone();
 
       if (checkCollision(RayCastObjects, group)) {
-        if (!isColliding) { // first collision
+        if (!isColliding) {
+          // first collision
           lastValidPosition.copy(currentPos); // only update for the first collision
           isColliding = true;
         }
         group.position.copy(lastValidPosition);
         group.updateMatrixWorld();
+        console.log("COLLIDING!!1");
       } else {
         lastValidPosition.copy(currentPos);
         isColliding = false;
@@ -875,7 +936,6 @@ UNLOCK EVENT:
 
   function updateCharacter(delta) {
     if (!isModelLoaded) return;
-    const fade = characterControls.fadeDuration;
     const key = characterControls.key;
     const up = characterControls.up;
     const ease = characterControls.ease;
@@ -958,10 +1018,10 @@ UNLOCK EVENT:
         path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
         displayName: "Ferrari Monza SP1",
       };
-    } else if (carName.includes("MclarenDraco")) {
+    } else if (carName.includes("VarisF82M4GTS")) {
       return {
-        path: "mclaren/draco/chassis.gltf",
-        displayName: "McLaren",
+        path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
+        displayName: "Varis F82 BMW M4 GTS",
       };
     } else {
       // Default fallback path for unknown cars
@@ -1289,8 +1349,6 @@ UNLOCK EVENT:
     }
   }
 
-  collide_flag = false;
-
   function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -1319,8 +1377,9 @@ UNLOCK EVENT:
 
   function render() {
     stats.update();
-    //UpdateBoxHelper(RayCastObjects);
-
+    if (debugBbox) {
+      UpdateBoxHelper(RayCastObjects);
+    }
     // Use the composer for rendering when outlining is needed
     if (outlineMode && outlinePass.selectedObjects.length > 0) {
       composer.render();
@@ -1468,11 +1527,6 @@ UNLOCK EVENT:
     chaOrbitControls.enablePan = false;
     chaOrbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
     chaOrbitControls.addEventListener("change", onControlsChange);
-
-    // Set initial orbit position
-    //updateOrbitTarget();
-
-    // Initially disable the controls based on mode
     if (controlMode === "fly") {
       chaOrbitControls.enabled = false;
     } else {
