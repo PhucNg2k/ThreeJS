@@ -166,10 +166,9 @@ async function init() {
       }
 
       if (event.code == "KeyB") {
-        
         debugBbox = debugBbox === true ? false : true;
-        console.log("KeyB pressed")
-        console.log("Debug: ", debugBbox)
+        console.log("KeyB pressed");
+        console.log("Debug: ", debugBbox);
       }
 
       if (event.code == "KeyH") {
@@ -308,9 +307,8 @@ async function init() {
       camPoint.name = "CamPoint";
       scene.add(camPoint);
       updateCameraPoint();
-    } 
+    }
   });
-
 
   controls.addEventListener("unlock", (event) => {
     console.log("(UNLOCK) EVENT");
@@ -327,7 +325,7 @@ async function init() {
       camera.position.copy(savedCameraState.position);
       camera.quaternion.copy(savedCameraState.quaternion);
       renderer.render(scene, camera);
-    } 
+    }
   });
 
   renderer.shadowMap.enabled = true;
@@ -389,16 +387,16 @@ async function init() {
       rotation: Math.PI / 4 - Math.PI / 2,
     },
     {
-      path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
-      name: "FerrariMonzaSP1",
-      scale: [14000, 14000, 14000],
+      path: "mclaren/nilu_27_concept_2024__www.vecarz.com/scene.gltf",
+      name: "Nilu27Concept",
+      scale: [13000, 13000, 13000],
       positionOffset: [-755, 5, 2000],
       rotation: Math.PI / 4,
     },
     {
-      path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
-      name: "VarisF82M4GTS",
-      scale: [11000, 11000, 11000],
+      path: "mclaren/ferrari_laferrari__www.vecarz.com/scene.gltf",
+      name: "FerrariLaFerrari",
+      scale: [150, 150, 150],
       positionOffset: [-1000, 5, 1000],
       rotation: Math.PI / 4,
     },
@@ -564,8 +562,8 @@ async function init() {
     console.log("MOUSE DOWN EVENT");
 
     savedCameraState = {
-        position: camera.position.clone(),
-        quaternion: camera.quaternion.clone(),
+      position: camera.position.clone(),
+      quaternion: camera.quaternion.clone(),
     };
 
     const guiPanel = document.getElementById("objectInfoPanel");
@@ -1013,15 +1011,15 @@ async function init() {
         path: "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf",
         displayName: "Bugatti Bolide",
       };
-    } else if (carName.includes("FerrariMonzaSP1")) {
+    } else if (carName.includes("Nilu27Concept")) {
       return {
-        path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
-        displayName: "Ferrari Monza SP1",
+        path: "mclaren/nilu_27_concept_2024__www.vecarz.com/scene.gltf",
+        displayName: "Nilu 27 Concept",
       };
-    } else if (carName.includes("VarisF82M4GTS")) {
+    } else if (carName.includes("FerrariLaFerrari")) {
       return {
-        path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
-        displayName: "Varis F82 BMW M4 GTS",
+        path: "mclaren/ferrari_laferrari__www.vecarz.com/scene.gltf",
+        displayName: "Ferrari LaFerrari",
       };
     } else {
       // Default fallback path for unknown cars

@@ -533,14 +533,14 @@ async function loadCars() {
         scale: [150, 150, 150],
       },
       {
-        path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
-        name: "Ferrari Monza SP1",
-        scale: [14000, 14000, 14000],
+        path: "mclaren/nilu_27_concept_2024__www.vecarz.com/scene.gltf",
+        name: "Nilu 27 Concept",
+        scale: [13000, 13000, 13000],
       },
       {
-        path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
-        name: "Varis F82",
-        scale: [14000, 14000, 14000],
+        path: "mclaren/ferrari_laferrari__www.vecarz.com/scene.gltf",
+        name: "Ferrari LaFerrari",
+        scale: [150, 150, 150],
       },
     ]; // Define map options
     const mapOptions = [
