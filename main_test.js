@@ -375,14 +375,14 @@ async function init() {
     {
       path: "mclaren/aspark_owl_2020__www.vecarz.com/scene.gltf",
       name: "AsparkOwl",
-      scale: [150, 150, 150],
+      scale: [130, 130, 130],
       positionOffset: [1000, 5, 1000],
       rotation: Math.PI / 4 - Math.PI / 2,
     },
     {
       path: "mclaren/bugatti_bolide_2024__www.vecarz.com/scene.gltf",
       name: "BugattiBolide",
-      scale: [150, 150, 150],
+      scale: [130, 130, 130],
       positionOffset: [755, 5, 2000],
       rotation: Math.PI / 4 - Math.PI / 2,
     },
