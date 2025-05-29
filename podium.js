@@ -361,12 +361,12 @@ async function loadPodiumModel() {
           if (isGLTF) {
             // Apply more reasonable scaling for different models
             if (car.name.includes("Ferrari")) {
-              car.scale.set(800, 800, 800);
+              car.scale.set(8, 8, 8);
             } else if (car.name.includes("Aspark")) {
               car.scale.set(8, 8, 8);
             } else if (car.name.includes("Bugatti")) {
               car.scale.set(8, 8, 8);
-            } else if (car.name.includes("Varis")) {
+            } else if (car.name.includes("Nilu")) {
               car.scale.set(800, 800, 800);
             } else {
               car.scale.set(7, 7, 7); // Default scale for other GLTF models
