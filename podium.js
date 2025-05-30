@@ -17,6 +17,8 @@ let carRotationEnabled = true;
 let carRotationSpeed = 0.5;
 let customTexture = null;
 let currentTextureName = "Default";
+let customCarTexture = null;
+let currentCarTextureName = "Default";
 let skyboxTexture = null;
 
 // Initialize app
@@ -38,7 +40,15 @@ document.addEventListener("DOMContentLoaded", function () {
   textureUpload.style.display = "none";
   document.body.appendChild(textureUpload);
 
-  // Xử lý upload texture
+  // Thêm input cho car texture upload (ẩn)
+  const carTextureUpload = document.createElement("input");
+  carTextureUpload.type = "file";
+  carTextureUpload.id = "carTextureUpload";
+  carTextureUpload.accept = "image/*";
+  carTextureUpload.style.display = "none";
+  document.body.appendChild(carTextureUpload);
+
+  // Xử lý upload texture cho podium
   textureUpload.addEventListener("change", function (e) {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -46,6 +56,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
       reader.onload = function (event) {
         applyCustomTexture(event.target.result);
+      };
+
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // Xử lý upload texture cho xe
+  carTextureUpload.addEventListener("change", function (e) {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+
+      reader.onload = function (event) {
+        applyCustomCarTexture(event.target.result);
       };
 
       reader.readAsDataURL(file);
@@ -199,6 +223,13 @@ async function loadPodiumModel() {
           if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;
+            
+            // Lưu material gốc để có thể reset
+            if (!child.userData) {
+              child.userData = {};
+            }
+            child.userData.originalMaterial = child.material.clone();
+            
             // Áp dụng environment map cho car materials
             if (child.material && skyboxTexture) {
               child.material.envMap = skyboxTexture;
@@ -220,6 +251,13 @@ async function loadPodiumModel() {
             if (child.isMesh) {
               child.castShadow = true;
               child.receiveShadow = true;
+              
+              // Lưu material gốc để có thể reset
+              if (!child.userData) {
+                child.userData = {};
+              }
+              child.userData.originalMaterial = child.material.clone();
+              
               if (child.material && skyboxTexture) {
                 child.material.envMap = skyboxTexture;
                 child.material.envMapIntensity = 1.0;
@@ -375,20 +413,32 @@ async function loadPodiumModel() {
             // For FBX models like the default Car.fbx
             car.scale.set(1, 1, 1);
           }
-          // Position the container at a better position on the podium
-          carContainer.position.set(0, podiumTopY + 0.2, -52); // Centered on podium, just above podium surface
+          
+          // Đặt tọa độ mặc định cho xe
+          const defaultCarPosition = {
+            x: 0,
+            y: podiumTopY + 0.2,
+            z: -52
+          };
+          
+          // Position the container at the default position
+          carContainer.position.set(
+            defaultCarPosition.x, 
+            defaultCarPosition.y, 
+            defaultCarPosition.z
+          );
 
           console.log("Podium top Y:", podiumTopY);
           console.log("Car height:", carHeight);
           console.log("Car center:", carCenter);
           console.log("Final container position:", carContainer.position);
 
-          // Add GUI controls for car position
+          // Add GUI controls for car position - truyền tọa độ mặc định thực tế
           addCarPositionControls(
             car,
             carContainer,
             podiumCenter,
-            podiumTopHelper.position.y
+            defaultCarPosition // Truyền object chứa tọa độ mặc định đầy đủ
           );
         }
 
@@ -629,6 +679,76 @@ function resetPodiumTextures() {
   console.log("Reset podium textures to default");
 }
 
+// Áp dụng custom texture cho xe từ ảnh bitmap đã upload
+function applyCustomCarTexture(imageUrl) {
+  if (!car) return;
+
+  // Tạo texture mới từ ảnh bitmap đã upload
+  customCarTexture = new THREE.TextureLoader().load(imageUrl, function (texture) {
+    texture.encoding = THREE.sRGBEncoding;
+    texture.needsUpdate = true;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+
+    // Áp dụng texture lên xe
+    car.traverse((child) => {
+      if (child.isMesh) {
+        // Tạo material mới với custom texture
+        const material = new THREE.MeshStandardMaterial({
+          map: texture,
+          roughness: 0.3,
+          metalness: 0.7,
+          envMap: skyboxTexture, // Sử dụng environment map
+          envMapIntensity: 1.2,
+        });
+
+        // Cập nhật material cho mesh
+        child.material = material;
+
+        console.log("Applied custom texture to car");
+      }
+    });
+
+    currentCarTextureName = "Custom Upload";
+  });
+}
+
+// Reset car textures về mặc định
+function resetCarTextures() {
+  if (!car) return;
+
+  // Áp dụng lại material mặc định cho xe
+  car.traverse((child) => {
+    if (child.isMesh) {
+      // Sử dụng original material nếu có, nếu không tạo material mặc định
+      if (child.userData && child.userData.originalMaterial) {
+        child.material = child.userData.originalMaterial.clone();
+        // Cập nhật environment map
+        if (skyboxTexture) {
+          child.material.envMap = skyboxTexture;
+          child.material.envMapIntensity = 1.0;
+          child.material.needsUpdate = true;
+        }
+      } else {
+        // Tạo lại material mặc định cho xe với màu và thuộc tính phù hợp
+        const material = new THREE.MeshStandardMaterial({
+          color: child.material.color || 0xffffff, // Giữ màu gốc hoặc trắng
+          roughness: 0.2,
+          metalness: 0.8,
+          envMap: skyboxTexture, // Sử dụng environment map
+          envMapIntensity: 1.5,
+        });
+
+        // Áp dụng material
+        child.material = material;
+      }
+    }
+  });
+
+  console.log("Reset car textures to default");
+  currentCarTextureName = "Default";
+}
+
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -658,22 +778,21 @@ function animate() {
 }
 
 // Updated function to handle both car and container
-function addCarPositionControls(car, container, podiumCenter, defaultY) {
+function addCarPositionControls(car, container, podiumCenter, defaultCarPosition) {
   const gui = new GUI();
   carControls = gui.addFolder("Car Position Controls");
 
-  // Set default position centered on the podium
+  // Lưu tọa độ mặc định thực tế (bao gồm cả z = -52)
   const defaultPosition = {
-    x: 0,
-    y: defaultY + 1, // Just above the podium
-    z: 0,
+    x: defaultCarPosition.x,
+    y: defaultCarPosition.y,
+    z: defaultCarPosition.z,
   };
-  // Position controls for the container
-  carControls.add(container.position, "x", -15, 15).name("X Position");
-  carControls
-    .add(container.position, "y", defaultPosition.y - 5, defaultPosition.y + 5)
-    .name("Y Position");
-  carControls.add(container.position, "z", -15, 15).name("Z Position");
+
+  // Position controls for the container với range phù hợp
+  const xControl = carControls.add(container.position, "x", -20, 20).name("X Position");
+  const yControl = carControls.add(container.position, "y", defaultPosition.y - 2, defaultPosition.y + 20).name("Y Position");
+  const zControl = carControls.add(container.position, "z", defaultPosition.z - 20, defaultPosition.z + 20).name("Z Position");
 
   // Thêm controls cho rotation
   const rotationFolder = carControls.addFolder("Car Rotation");
@@ -694,15 +813,15 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
   };
 
   // Thêm controls với độ (-180 đến 180)
-  rotationFolder
+  const xRotControl = rotationFolder
     .add(rotationControl, "x", -180, 180)
     .name("X Rotation (deg)")
     .onChange(updateRotation);
-  rotationFolder
+  const yRotControl = rotationFolder
     .add(rotationControl, "y", -180, 180)
     .name("Y Rotation (deg)")
     .onChange(updateRotation);
-  rotationFolder
+  const zRotControl = rotationFolder
     .add(rotationControl, "z", -180, 180)
     .name("Z Rotation (deg)")
     .onChange(updateRotation);
@@ -722,12 +841,12 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
       carRotationSpeed = value;
     });
 
-  // Thêm nút reset
+  // Thêm nút reset với logic sửa đổi
   carControls
     .add(
       {
         resetPosition: function () {
-          // Reset container position về mặc định
+          // Reset container position về tọa độ mặc định thực tế
           container.position.x = defaultPosition.x;
           container.position.y = defaultPosition.y;
           container.position.z = defaultPosition.z;
@@ -737,36 +856,36 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
           container.rotation.y = 0;
           container.rotation.z = 0;
 
-          // Reset container position to default
-          container.position.x = defaultPosition.x;
-          container.position.y = defaultPosition.y;
-          container.position.z = defaultPosition.z;
-
-          // Update rotation control values
+          // Reset rotation control values
           rotationControl.x = 0;
           rotationControl.y = 0;
           rotationControl.z = 0;
 
-          // Force GUI update
-          for (const controller of rotationFolder.controllers) {
-            controller.updateDisplay();
-          }
+          // Force GUI update cho tất cả controls
+          xControl.updateDisplay();
+          yControl.updateDisplay();
+          zControl.updateDisplay();
+          xRotControl.updateDisplay();
+          yRotControl.updateDisplay();
+          zRotControl.updateDisplay();
+
+          console.log("Reset car to default position:", defaultPosition);
         },
       },
       "resetPosition"
     )
     .name("Reset Car Position");
 
-  // Thêm texture controls
-  const textureFolder = gui.addFolder("Texture Controls");
+  // Thêm texture controls cho podium
+  const textureFolder = gui.addFolder("Podium Texture Controls");
 
-  // Thêm tùy chọn texture và custom upload
+  // Thêm tùy chọn texture và custom upload cho podium
   textureFolder
     .add({ texture: currentTextureName }, "texture", [
       "Default",
       "Custom Upload",
     ])
-    .name("Texture")
+    .name("Podium Texture")
     .onChange((value) => {
       if (value === "Custom Upload") {
         document.getElementById("textureUpload").click();
@@ -774,6 +893,71 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
         currentTextureName = value;
         // Reset về texture mặc định
         resetPodiumTextures();
+      }
+    });
+
+  // Thêm texture controls cho xe
+  const carTextureFolder = gui.addFolder("Car Texture Controls");
+
+  // Thêm tùy chọn texture và custom upload cho xe
+  carTextureFolder
+    .add({ texture: currentCarTextureName }, "texture", [
+      "Default",
+      "Custom Upload",
+    ])
+    .name("Car Texture")
+    .onChange((value) => {
+      if (value === "Custom Upload") {
+        document.getElementById("carTextureUpload").click();
+      } else {
+        currentCarTextureName = value;
+        // Reset về texture mặc định
+        resetCarTextures();
+      }
+    });
+
+  // Thêm material properties controls cho xe
+  const carMaterialFolder = carTextureFolder.addFolder("Car Material Properties");
+  
+  // Roughness control cho xe
+  carMaterialFolder
+    .add({ roughness: 0.2 }, "roughness", 0, 1)
+    .name("Car Roughness")
+    .onChange((value) => {
+      if (car) {
+        car.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material.roughness = value;
+          }
+        });
+      }
+    });
+
+  // Metalness control cho xe
+  carMaterialFolder
+    .add({ metalness: 0.8 }, "metalness", 0, 1)
+    .name("Car Metalness")
+    .onChange((value) => {
+      if (car) {
+        car.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material.metalness = value;
+          }
+        });
+      }
+    });
+
+  // Environment map intensity cho xe
+  carMaterialFolder
+    .add({ envIntensity: 1.5 }, "envIntensity", 0, 3)
+    .name("Car Env Intensity")
+    .onChange((value) => {
+      if (car) {
+        car.traverse((child) => {
+          if (child.isMesh && child.material && child.material.envMapIntensity !== undefined) {
+            child.material.envMapIntensity = value;
+          }
+        });
       }
     });
 
@@ -810,6 +994,8 @@ function addCarPositionControls(car, container, podiumCenter, defaultY) {
 
   // Mở tất cả các folder
   textureFolder.open();
+  carTextureFolder.open();
+  carMaterialFolder.open();
   skyboxFolder.open();
   carControls.open();
   rotationFolder.open();
