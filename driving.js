@@ -28,6 +28,8 @@ const musicTracks = [
   { url: "/audio/driving_music_1.mp3", name: "Driving Theme 1" },
   { url: "/audio/driving_music_2.mp3", name: "Driving Theme 2" },
   { url: "/audio/driving_music_3.mp3", name: "Driving Theme 3" },
+  { url: "/audio/driving_music_4.mp3", name: "Driving Theme 4" },
+  { url: "/audio/driving_music_5.mp3", name: "Driving Theme 5" },
 ];
 
 // Car driving variables
