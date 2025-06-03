@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Car showroom - Landing</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+
+        .video-background {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            transform: translateX(-50%) translateY(-50%);
+            z-index: -2;
+            object-fit: cover;
+            pointer-events: none;
+        }
+
+        @media (min-aspect-ratio: 16/9) {
+            .video-background {
+                width: 100%;
+                height: auto;
+            }
+        }
+
+        @media (max-aspect-ratio: 16/9) {
+            .video-background {
+                width: auto;
+                height: 100%;
+            }
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .landing-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        .landing-title {
+            font-size: 6.5em;
+            margin-bottom: 1em;
+            letter-spacing: 8px;
+            font-weight: 900;
+            text-transform: uppercase;
+            background: linear-gradient(45deg, #FFD700, #E5E4E2, #00BFFF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0.3), 
+                         0 0 40px rgba(229, 228, 226, 0.3), 
+                         0 0 50px rgba(0, 191, 255, 0.3);
+            pointer-events: none;
+            position: relative;
+            line-height: 1.1;
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.2));
+        }
+
+        .landing-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(255, 215, 0, 0.5) 20%, 
+                rgba(229, 228, 226, 0.5) 50%, 
+                rgba(0, 191, 255, 0.5) 80%, 
+                transparent 100%);
+        }
+
+        @media (max-width: 768px) {
+            .landing-title {
+                font-size: 4em;
+                letter-spacing: 4px;
+            }
+        }
+
+        .landing-button {
+            padding: 1.5em 3.5em;
+            font-size: 1.4em;
+            background: linear-gradient(135deg, 
+                rgba(192, 192, 255, 0.15) 0%,
+                rgba(0, 191, 255, 0.1) 100%);
+            border: 2px solid rgba(192, 192, 255, 0.8);
+            color: #E5E4E2;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-decoration: none;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            backdrop-filter: blur(8px);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            box-shadow: 0 0 20px rgba(192, 192, 255, 0.2),
+                       0 0 40px rgba(0, 191, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .landing-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(192, 192, 255, 0.2),
+                transparent
+            );
+            transition: 0.5s;
+        }
+
+        .landing-button:hover {
+            background: linear-gradient(135deg, 
+                rgba(192, 192, 255, 0.25) 0%,
+                rgba(0, 191, 255, 0.2) 100%);
+            box-shadow: 0 0 30px rgba(192, 192, 255, 0.4),
+                       0 0 60px rgba(0, 191, 255, 0.3);
+            transform: translateY(-3px) scale(1.05);
+            border-color: #00BFFF;
+            color: #FFFFFF;
+            text-shadow: 0 0 10px rgba(192, 192, 255, 0.5);
+            letter-spacing: 4px;
+        }
+
+        .landing-button:hover::before {
+            left: 100%;
+        }
+
+        .landing-button:active {
+            transform: translateY(-1px) scale(0.98);
+            box-shadow: 0 0 20px rgba(192, 192, 255, 0.3),
+                       0 0 40px rgba(0, 191, 255, 0.2);
+            transition: all 0.1s;
+        }
+
+        /* Disable touch callout and selection */
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Video Background -->
+    <video autoplay muted loop playsinline class="video-background">
+        <!-- Replace 'background.mp4' with your video file -->
+        <source src="carLoad.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+    
+    <!-- Dark Overlay -->
+    <div class="overlay"></div>
+
+    <!-- Content -->
+    <div class="landing-container">
+        <h1 class="landing-title">Car showroom</h1>
+        <a href="index.html" class="landing-button">Experience now</a>
+    </div>
+</body>
+</html> 

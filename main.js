@@ -28,7 +28,7 @@ let outlineMode = false;
 let isModelLoaded = false;
 let camPoint = null;
 
-let debugBbox = true;
+let debugBbox = false;
 
 // Car array for tracking cars in the scene
 let cars = [];
@@ -49,7 +49,131 @@ const characterControls = {
   floorDecale: 0,
 };
 
+let manager = new THREE.LoadingManager();
+let loadingBar;
+let renderer, stats, planeGeometry, planeMaterial, plane;
+let isLoadingComplete = false;
+let isVideoFinished = false;
+
+// Add loading video element to the page
+const loadingVideo = document.createElement('video');
+loadingVideo.id = 'loadingVideo';
+loadingVideo.style.position = 'fixed';
+loadingVideo.style.top = '0';
+loadingVideo.style.left = '0';
+loadingVideo.style.width = '100%';
+loadingVideo.style.height = '100%';
+loadingVideo.style.objectFit = 'cover';
+loadingVideo.style.zIndex = '9999';
+loadingVideo.style.backgroundColor = '#000';
+loadingVideo.muted = true;
+loadingVideo.playsInline = true;
+loadingVideo.src = 'loading1.mp4'; // You'll need to provide this video file
+
+
+
+document.body.appendChild(loadingVideo);
+
+// Add loading overlay
+const loadingOverlay = document.createElement('div');
+loadingOverlay.id = 'loadingOverlay';
+loadingOverlay.style.position = 'fixed';
+loadingOverlay.style.top = '0';
+loadingOverlay.style.left = '0';
+loadingOverlay.style.width = '100%';
+loadingOverlay.style.height = '100%';
+loadingOverlay.style.backgroundColor = '#000';
+loadingOverlay.style.zIndex = '9998';
+loadingOverlay.style.display = 'flex';
+loadingOverlay.style.justifyContent = 'center';
+loadingOverlay.style.alignItems = 'center';
+loadingOverlay.style.flexDirection = 'column';
+loadingOverlay.style.color = '#fff';
+loadingOverlay.style.fontFamily = 'Arial, sans-serif';
+loadingOverlay.style.fontSize = '24px';
+document.body.appendChild(loadingOverlay);
+
+// Add loading text
+
+
+// Add progress bar
+const progressBar = document.createElement('div');
+progressBar.id = 'progressBar';
+progressBar.style.width = '200px';
+progressBar.style.height = '4px';
+progressBar.style.backgroundColor = '#333';
+progressBar.style.marginTop = '10px';
+progressBar.style.borderRadius = '2px';
+progressBar.style.overflow = 'hidden';
+loadingOverlay.appendChild(progressBar);
+
+const progressFill = document.createElement('div');
+progressFill.id = 'progressFill';
+progressFill.style.width = '0%';
+progressFill.style.height = '100%';
+progressFill.style.backgroundColor = '#fff';
+progressFill.style.transition = 'width 0.3s ease-out';
+progressBar.appendChild(progressFill);
+
 async function init() {
+  // Hide the start panel immediately at initialization
+  const startPanel = document.getElementById("startPanel");
+  if (startPanel) {
+    startPanel.style.display = 'none';
+    startPanel.style.visibility = 'hidden';
+    startPanel.style.opacity = '0';
+  }
+
+  // Add event listener for video end
+  loadingVideo.addEventListener('ended', () => {
+    isVideoFinished = true;
+    checkLoadingComplete();
+  });
+
+  // Hide the webgl container initially
+  const webglContainer = document.getElementById('webgl');
+  if (webglContainer) {
+    webglContainer.style.visibility = 'hidden';
+    webglContainer.style.opacity = '0';
+    webglContainer.style.transition = 'opacity 1s ease-in';
+  }
+
+  // Start loading video
+  try {
+    await loadingVideo.play();
+    console.log('Loading video started playing');
+  } catch (error) {
+    console.warn('Autoplay prevented:', error);
+    // If autoplay fails, we'll still proceed with loading
+    isVideoFinished = true;
+  }
+
+  // Setup loading manager
+  manager.onStart = function (url, itemsLoaded, itemsTotal) {
+    console.log('Started loading:', url);
+    loadingOverlay.style.display = 'flex';
+    loadingVideo.style.display = 'block';
+  };
+
+  manager.onProgress = function (url, itemsLoaded, itemsTotal) {
+    const progress = itemsLoaded / itemsTotal;
+    console.log('Loading progress:', Math.round(progress * 100) + '%');
+    progressFill.style.width = `${progress * 100}%`;
+    loadingText.textContent = `Loading... ${Math.round(progress * 100)}%`;
+  };
+
+  manager.onLoad = function () {
+    console.log('Loading complete!');
+    isLoadingComplete = true;
+    checkLoadingComplete();
+  };
+
+  manager.onError = function (url) {
+    console.error('Error loading:', url);
+    loadingText.textContent = 'Error loading assets. Please refresh the page.';
+    loadingText.style.color = '#ff0000';
+  };
+
   minimapRenderer = new THREE.WebGLRenderer({
     alpha: true,
     canvas: document.getElementById("minimapCanvas"),
@@ -80,7 +204,7 @@ async function init() {
 
   let axesHelper = new THREE.AxesHelper(1000);
   axesHelper.layers.set(1);
-  scene.add(axesHelper);
+  //scene.add(axesHelper);
 
   if (controlMode === "fly") {
     camPoint = getSphereSimple();
@@ -266,27 +390,22 @@ async function init() {
   document.addEventListener("keydown", onKeyDown, false);
   document.addEventListener("keyup", onKeyUp, false);
 
-  const startPanel = document.getElementById("startPanel");
   const startButton = document.getElementById("startButton");
-  startButton.addEventListener(
-    "click",
-    () => {
-      startPanel.style.display = "none";
-      if (controlMode === "orbit") {
-        // In orbit mode, update target before locking
-        updateTarget();
-      } else {
-        if (savedCameraState) {
-          // In free mode, restore saved camera state if exists
-          camera.position.copy(savedCameraState.position);
-          camera.quaternion.copy(savedCameraState.quaternion);
+  if (startButton) {
+    startButton.addEventListener(
+      "click",
+      () => {
+        if (startPanel) {
+          startPanel.style.display = "none";
+          startPanel.style.visibility = "hidden";
+          startPanel.style.opacity = "0";
         }
-      }
+        controls.lock();
+      },
+      false
+    );
+  }
 
-      controls.lock();
-    },
-    false
-  );
   controls.addEventListener("lock", (event) => {
     console.log("(LOCK) EVENT");
     startPanel.style.display = "none";
@@ -311,10 +430,16 @@ async function init() {
     } 
   });
 
-
   controls.addEventListener("unlock", (event) => {
     console.log("(UNLOCK) EVENT");
     resetKeys();
+
+    // Show start panel when controls are unlocked
+    if (startPanel) {
+      startPanel.style.display = "block";
+      startPanel.style.visibility = "visible";
+      startPanel.style.opacity = "1";
+    }
 
     // Hide controls panel when controls are inactive
     let controlsPanel = document.getElementById("controlsPanel");
@@ -396,9 +521,9 @@ async function init() {
       rotation: Math.PI / 4,
     },
     {
-      path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
-      name: "VarisF82M4GTS",
-      scale: [11000, 11000, 11000],
+      path: "mclaren/ferrari_laferrari__www.vecarz.com/scene.gltf",
+      name: "FerrariLaFerrari",
+      scale: [150, 150, 150],
       positionOffset: [-1000, 5, 1000],
       rotation: Math.PI / 4,
     },
@@ -520,7 +645,7 @@ async function init() {
   const helper = new THREE.DirectionalLightHelper(directionalLight, 5);
   //scene.add(helper);
   // Create a much larger ground plane for infinite-like appearance (but smaller if showroom is present)
-  const planeSize = showroom ? 20000 : 50000; // Smaller ground if showroom is loaded
+  const planeSize = showroom ? 20000 : 20000; // Smaller ground if showroom is loaded
   const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
   const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
   planeMaterial.receiveShadow = true;
@@ -613,19 +738,7 @@ async function init() {
     }
   });
 
-  function clearGuiPanel(guiPanel) {
-    if (guiPanel) {
-      console.log("Clearing GUI panel");
-      guiPanel.style.display = "none";
-    }
-  }
 
-  function clearCarOptionPanel(carOptionPanel) {
-    if (carOptionPanel) {
-      console.log("Clearing car option panel");
-      carOptionPanel.style.display = "none";
-    }
-  }
 
   window.addEventListener("mouseup", () => {
     console.log("MOUSE UP EVENT");
@@ -660,9 +773,27 @@ async function init() {
   camera.getWorldDirection(dirCam);
   trackCameraPoint(camPoint);
 
-  setupOutlineEffect(renderer, scene, camera);
+  //setupOutlineEffect(renderer, scene, camera);
 
-  animate();
+
+
+  
+  //animate();
+
+
+  function clearGuiPanel(guiPanel) {
+    if (guiPanel) {
+      console.log("Clearing GUI panel");
+      guiPanel.style.display = "none";
+    }
+  }
+
+  function clearCarOptionPanel(carOptionPanel) {
+    if (carOptionPanel) {
+      console.log("Clearing car option panel");
+      carOptionPanel.style.display = "none";
+    }
+  }
 
   function createRayCastObjects() {
     let raycastObjects = [];
@@ -1018,10 +1149,10 @@ async function init() {
         path: "mclaren/ferrari_monza_sp1_2019__www.vecarz.com/scene.gltf",
         displayName: "Ferrari Monza SP1",
       };
-    } else if (carName.includes("VarisF82M4GTS")) {
+    } else if (carName.includes("FerrariLaFerrari")) {
       return {
-        path: "mclaren/2014_varis_f82_bmw_m4_gts/scene.gltf",
-        displayName: "Varis F82 BMW M4 GTS",
+        path: "mclaren/ferrari_laferrari__www.vecarz.com/scene.gltf",
+        displayName: "Ferrari LaFerrari",
       };
     } else {
       // Default fallback path for unknown cars
@@ -1213,6 +1344,11 @@ async function init() {
   }
 
   function setupOutlineEffect(renderer, scene, camera) {
+    if (!renderer || !scene || !camera) {
+      console.warn('Cannot setup outline effect: missing required parameters');
+      return;
+    }
+
     const renderPass = new RenderPass(scene, camera);
     outlinePass = new OutlinePass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -1223,27 +1359,8 @@ async function init() {
     composer = new EffectComposer(renderer);
     composer.addPass(renderPass);
     composer.addPass(outlinePass);
-  }
 
-  function mergeGroupIntoSingleMesh(group) {
-    let geometries = [];
-    let material = null;
-    group.traverse((child) => {
-      if (child.isMesh) {
-        const clonedGeometry = child.geometry.clone();
-        clonedGeometry.applyMatrix4(child.matrixWorld);
-        geometries.push(clonedGeometry);
-        if (!material) material = child.material;
-      }
-    });
-    if (geometries.length === 0) return null;
-    const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
-    const mergedMesh = new THREE.Mesh(mergedGeometry, material);
-    return mergedMesh;
-  }
-
-  function applyOutlineToMesh(mesh) {
-    outlinePass.selectedObjects = [mesh];
+    // Set default outline properties
     outlinePass.edgeStrength = 8;
     outlinePass.edgeGlow = 0.5;
     outlinePass.edgeThickness = 2.0;
@@ -1251,7 +1368,15 @@ async function init() {
   }
 
   function removeOutline() {
-    outlinePass.selectedObjects = [];
+    if (outlinePass) {
+      outlinePass.selectedObjects = [];
+    }
+  }
+
+  function applyOutlineToMesh(mesh) {
+    if (outlinePass) {
+      outlinePass.selectedObjects = [mesh];
+    }
   }
 
   function onPointerMove(event) {
@@ -1350,8 +1475,11 @@ async function init() {
   }
 
   function animate() {
+
+    
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
+    
     if (controlMode === "orbit") {
       updateCharacter(delta);
       updateOrbitTarget();
@@ -1582,6 +1710,79 @@ async function init() {
         updateCameraPoint();
       }
     }
+  }
+
+  // New function to start the scene
+  function startScene() {
+    if (!isVideoFinished) {
+      console.log('Waiting for loading and video to complete...');
+      return;
+    }
+    
+    console.log('Starting scene...');
+    
+    // Start animation loop
+    animate();
+    
+    console.log("animating")
+
+    // Start any other scene initialization that should happen after loading
+    if (controlMode === 'orbit') {
+      updateOrbitTarget();
+    }
+  }
+
+  // New function to check if both loading and video are complete
+  function checkLoadingComplete() {
+    if (isVideoFinished) {
+      console.log('Both loading and video are complete, transitioning to scene');
+      transitionToScene();
+    }
+  }
+
+  // New function to handle the transition
+  function transitionToScene() {
+    const webglContainer = document.getElementById('webgl');
+    const startPanel = document.getElementById("startPanel");
+    
+    // Ensure start panel stays hidden during transition
+    if (startPanel) {
+      startPanel.style.display = 'none';
+      startPanel.style.visibility = 'hidden';
+      startPanel.style.opacity = '0';
+    }
+    
+    // Fade out loading elements
+    const fadeOutElements = [loadingVideo, loadingOverlay];
+    fadeOutElements.forEach(element => {
+      element.style.transition = 'opacity 1s ease-out';
+      element.style.opacity = '0';
+    });
+
+    // Wait for fade out to complete
+    setTimeout(() => {
+      // Hide loading elements
+      fadeOutElements.forEach(element => {
+        element.style.display = 'none';
+      });
+
+      // Show and fade in the webgl container
+      if (webglContainer) {
+        webglContainer.style.visibility = 'visible';
+        webglContainer.style.opacity = '1';
+      }
+
+      // Switch to orbit mode and set up controls
+      controlMode = 'orbit';
+      chaOrbitControls.enabled = true;
+      chaOrbitControls.addEventListener("change", onControlsChange);
+     
+      updateOrbitTarget();
+
+      // Start the scene
+      startScene();
+      console.log("scene started in orbit mode");
+    }, 1000);
   }
 }
 
