@@ -573,6 +573,20 @@ async function init() {
       scene.add(showroom);
       console.log("Showroom loaded successfully!");
 
+      // Create a skybox for urban environmentMore actions
+      const skyboxLoader = new THREE.CubeTextureLoader();
+      const skyboxTexture = skyboxLoader.load([
+        "/BoxPieces/px.bmp",
+        "/BoxPieces/nx.bmp",
+        "/BoxPieces/py.bmp",
+        "/BoxPieces/ny.bmp",
+        "/BoxPieces/pz.bmp",
+        "/BoxPieces/nz.bmp",
+      ]);
+
+      // Fallback to blue sky if skybox fails to load
+      scene.background = skyboxTexture;
+
       return showroom;
     } catch (error) {
       console.error("Failed to load showroom:", error);
