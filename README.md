@@ -40,7 +40,7 @@ Một ứng dụng web 3D được xây dựng bằng **Three.js**, mang đến 
     *   `lil-gui`: Để tạo các panel giao diện cài đặt.
     *   `Stats.js`: Để theo dõi hiệu năng (FPS).
 
-## 3. Hướng dẫn Cài đặt và Chạy đồ án
+## D. Hướng dẫn Cài đặt và Chạy đồ án
 
 Để chạy dự án này trên máy cục bộ, bạn cần một môi trường server đơn giản để tránh các lỗi liên quan đến chính sách CORS của trình duyệt khi tải tài nguyên 3D.
 
@@ -73,13 +73,13 @@ Một ứng dụng web 3D được xây dựng bằng **Three.js**, mang đến 
 4.  **Truy cập ứng dụng:**
     Mở trình duyệt của bạn và truy cập vào địa chỉ được cung cấp (`http://localhost:8080`).
 
-## Video Demo sản phẩm
+## E. Video Demo sản phẩm
 
 
 [Link video](https://drive.google.com/file/d/1waQZScfFFjmbKAGCnKNBXasN4mR-gMPq/view?fbclid=IwY2xjawLC61VleHRuA2FlbQIxMQABHi4jzmVfSRFVPYHyeZPeoUTUVHG4Sq03VYim7Ul7CYNh4T4TngtIV0TSQdGv_aem_YIo6y_pT48lnPesHuAri4A)
 
 
-## D. Thành viên nhóm
+## F. Thành viên nhóm
 
 | Họ và Tên            | MSSV       |
 | -------------------- | ---------- |
